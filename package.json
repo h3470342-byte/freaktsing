@@ -1,0 +1,25 @@
+{
+  "name": "freaktsing",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "discord.js": "^14.26.4"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/h3470342-byte/freaktsing.git"
+  },
+  "bugs": {
+    "url": "https://github.com/h3470342-byte/freaktsing/issues"
+  },
+  "homepage": "https://github.com/h3470342-byte/freaktsing#readme"
+}
