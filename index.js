@@ -3,6 +3,8 @@ require("dotenv").config();
 const express = require("express");
 const app = express();
 
+console.log("DATABASE_URL =", JSON.stringify(process.env.DATABASE_URL));
+
 app.get("/", (req, res) => res.send("Bot aktif"));
 app.listen(process.env.PORT || 3000, "0.0.0.0", () => {
     console.log("Web server açık");
