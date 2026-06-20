@@ -1460,7 +1460,6 @@ client.on("messageCreate", async (message) => {
 
         return message.channel.send({ embeds: [embed], components: [row] });
     }
-});
 
 /* ================= TICKET CREATE ================= */
 
@@ -1595,13 +1594,6 @@ client.on("interactionCreate", async (interaction) => {
 
 const aktifCekilisler = new Map();
 let sonBitenCekilis = null;
-
-client.on("messageCreate", async (message) => {
-    if (message.author.bot) return;
-    if (!message.guild) return;
-
-    const args = message.content.trim().split(/\s+/);
-    const cmd  = args[0].toLowerCase();
 
     if (cmd === "!cekilis") {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator))
