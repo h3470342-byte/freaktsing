@@ -1,25 +1,14 @@
 {
-  "name": "freaktsing",
+  "name": "discord-bot",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "discord.js": "^14.26.4"
-  },
-  "devDependencies": {},
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/h3470342-byte/freaktsing.git"
-  },
-  "bugs": {
-    "url": "https://github.com/h3470342-byte/freaktsing/issues"
-  },
-  "homepage": "https://github.com/h3470342-byte/freaktsing#readme"
+    "discord.js": "^14.0.0",
+    "better-sqlite3": "^9.0.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.0"
+  }
 }
