@@ -19,106 +19,103 @@ const {
     ChannelType
 } = require("discord.js");
 
-const Database = require("better-sqlite3");
-const db = new Database("bot.db");
+const { Pool } = require("pg");
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
 
 /* ================= VERİTABANI TABLOLARI ================= */
 
-db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        coins INTEGER DEFAULT 0,
-        last_daily INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS animals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL,
-        animal TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS levels (
-        user_id TEXT PRIMARY KEY,
-        xp INTEGER DEFAULT 0,
-        level INTEGER DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS chat_stats (
-        user_id TEXT PRIMARY KEY,
-        words INTEGER DEFAULT 0,
-        coins INTEGER DEFAULT 0,
-        reward_10000 INTEGER DEFAULT 0,
-        reward_50000 INTEGER DEFAULT 0,
-        reward_80000 INTEGER DEFAULT 0,
-        reward_100000 INTEGER DEFAULT 0,
-        reward_200000 INTEGER DEFAULT 0,
-        reward_500000 INTEGER DEFAULT 0,
-        reward_1000000 INTEGER DEFAULT 0,
-        reward_2000000 INTEGER DEFAULT 0,
-        reward_5000000 INTEGER DEFAULT 0,
-        reward_10000000 INTEGER DEFAULT 0,
-        reward_50000000 INTEGER DEFAULT 0,
-        reward_100000000 INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS tickets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        count INTEGER DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS youtube_state (
-        id INTEGER PRIMARY KEY DEFAULT 1,
-        last_video_id TEXT DEFAULT ''
-    );
-
-    CREATE TABLE IF NOT EXISTS vip_boosts (
-        user_id TEXT PRIMARY KEY,
-        coin_boost_until INTEGER DEFAULT 0,
-        xp_boost_until INTEGER DEFAULT 0,
-        sans_artirici INTEGER DEFAULT 0
-    );
-`);
-
-db.exec(`INSERT OR IGNORE INTO tickets (id, count) VALUES (1, 1);`);
-db.exec(`INSERT OR IGNORE INTO youtube_state (id, last_video_id) VALUES (1, '');`);
+async function initDB() {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            coins BIGINT DEFAULT 0,
+            last_daily BIGINT DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS animals (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            animal TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS levels (
+            user_id TEXT PRIMARY KEY,
+            xp INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS chat_stats (
+            user_id TEXT PRIMARY KEY,
+            words BIGINT DEFAULT 0,
+            coins BIGINT DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS tickets (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            count INTEGER DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS youtube_state (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            last_video_id TEXT DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS vip_boosts (
+            user_id TEXT PRIMARY KEY,
+            coin_boost_until BIGINT DEFAULT 0,
+            xp_boost_until BIGINT DEFAULT 0,
+            sans_artirici INTEGER DEFAULT 0
+        );
+    `);
+    await pool.query(`INSERT INTO tickets (id, count) VALUES (1, 1) ON CONFLICT DO NOTHING;`);
+    await pool.query(`INSERT INTO youtube_state (id, last_video_id) VALUES (1, '') ON CONFLICT DO NOTHING;`);
+    console.log("Veritabanı hazır!");
+}
 
 /* ================= VERİTABANI YARDIMCI FONKSİYONLARI ================= */
 
-function getUser(id) {
-    let user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
-    if (!user) {
-        db.prepare("INSERT INTO users (id) VALUES (?)").run(id);
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
-    }
-    return user;
+async function getUser(id) {
+    await pool.query(`INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]);
+    const res = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+    return res.rows[0];
 }
 
-function getChatData(id) {
-    let data = db.prepare("SELECT * FROM chat_stats WHERE user_id = ?").get(id);
-    if (!data) {
-        db.prepare("INSERT INTO chat_stats (user_id) VALUES (?)").run(id);
-        data = db.prepare("SELECT * FROM chat_stats WHERE user_id = ?").get(id);
-    }
-    return data;
+async function getChatData(id) {
+    await pool.query(`INSERT INTO chat_stats (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]);
+    const res = await pool.query(`SELECT * FROM chat_stats WHERE user_id = $1`, [id]);
+    return res.rows[0];
 }
 
-function getLevelData(id) {
-    let data = db.prepare("SELECT * FROM levels WHERE user_id = ?").get(id);
-    if (!data) {
-        db.prepare("INSERT INTO levels (user_id) VALUES (?)").run(id);
-        data = db.prepare("SELECT * FROM levels WHERE user_id = ?").get(id);
-    }
-    return data;
+async function getLevelData(id) {
+    await pool.query(`INSERT INTO levels (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]);
+    const res = await pool.query(`SELECT * FROM levels WHERE user_id = $1`, [id]);
+    return res.rows[0];
 }
 
-function getNextTicketId() {
-    const row = db.prepare("SELECT count FROM tickets WHERE id = 1").get();
-    const current = row.count;
-    db.prepare("UPDATE tickets SET count = count + 1 WHERE id = 1").run();
-    return String(current).padStart(4, "0");
+async function getNextTicketId() {
+    const res = await pool.query(`UPDATE tickets SET count = count + 1 WHERE id = 1 RETURNING count`);
+    return String(res.rows[0].count - 1).padStart(4, "0");
 }
 
-/* ================= CONFIG ================= */
+async function getVipBoost(userId) {
+    await pool.query(`INSERT INTO vip_boosts (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [userId]);
+    const res = await pool.query(`SELECT * FROM vip_boosts WHERE user_id = $1`, [userId]);
+    return res.rows[0];
+}
+
+async function hasCoinBoost(userId) {
+    const data = await getVipBoost(userId);
+    return parseInt(data.coin_boost_until) > Date.now();
+}
+
+async function hasSansArtirici(userId) {
+    const data = await getVipBoost(userId);
+    return data.sans_artirici > 0;
+}
+
+function getVipLevel(member) {
+    if (member.roles.cache.has(VIP_PLUS_ROLE)) return 2;
+    if (member.roles.cache.has(VIP_ROLE)) return 1;
+    return 0;
+}
 
 const client = new Client({
     intents: [
@@ -136,34 +133,7 @@ const WELCOME_CHANNEL_ID = "1516790940440985681";
 const VIP_ROLE           = "1517595427577266316";
 const VIP_PLUS_ROLE      = "1517592377106104371";
 
-/* ================= VIP YARDIMCI ================= */
-
-function getVipLevel(member) {
-    if (member.roles.cache.has(VIP_PLUS_ROLE)) return 2; // VIP+
-    if (member.roles.cache.has(VIP_ROLE)) return 1;      // VIP
-    return 0;
-}
-
-function getVipBoost(userId) {
-    let data = db.prepare("SELECT * FROM vip_boosts WHERE user_id = ?").get(userId);
-    if (!data) {
-        db.prepare("INSERT INTO vip_boosts (user_id) VALUES (?)").run(userId);
-        data = db.prepare("SELECT * FROM vip_boosts WHERE user_id = ?").get(userId);
-    }
-    return data;
-}
-
-function hasCoinBoost(userId) {
-    const data = getVipBoost(userId);
-    return data.coin_boost_until > Date.now();
-}
-
-function hasSansArtirici(userId) {
-    const data = getVipBoost(userId);
-    return data.sans_artirici > 0;
-}
-
-/* ================= ANTI SPAM ================= */
+/* ================= CONFIG ================= */
 
 const spamMap        = new Map();
 const spamWarn       = new Map();
@@ -425,8 +395,10 @@ async function handleKufur(message, tur) {
 
 /* ================= READY ================= */
 
-client.once("ready", () => {
+client.once("ready", async () => {
     console.log(`${client.user.tag} aktif!`);
+    await initDB();
+    await initSonVideoId();
     youtubeKontrol();
     setInterval(youtubeKontrol, 3 * 60 * 1000);
 });
@@ -471,20 +443,20 @@ client.on("messageCreate", async (message) => {
     const uid  = message.author.id;
 
     /* ---------- LEVEL ---------- */
-    const levelData = getLevelData(uid);
+    const levelData = await getLevelData(uid);
     const newXp = levelData.xp + Math.floor(Math.random() * 10) + 5;
     if (newXp >= levelData.level * 120) {
-        db.prepare("UPDATE levels SET xp = 0, level = level + 1 WHERE user_id = ?").run(uid);
+        await pool.query(`UPDATE levels SET xp = 0, level = level + 1 WHERE user_id = $1`, [uid]);
         const newLevel = levelData.level + 1;
         message.channel.send(`🎉 ${message.author} level atladı! Level: **${newLevel}**`);
     } else {
-        db.prepare("UPDATE levels SET xp = ? WHERE user_id = ?").run(newXp, uid);
+        await pool.query(`UPDATE levels SET xp = $1 WHERE user_id = $2`, [newXp, uid]);
     }
 
     /* ---------- CHAT REWARD ---------- */
-    getChatData(uid);
-    db.prepare("UPDATE chat_stats SET words = words + ? WHERE user_id = ?").run(args.length, uid);
-    const chatData = getChatData(uid);
+    await getChatData(uid);
+    await pool.query(`UPDATE chat_stats SET words = words + $1 WHERE user_id = $2`, [args.length, uid]);
+    const chatData = await getChatData(uid);
 
     const rewards = [
         { words: 1000,   coins: 500,    col: "reward_10000"     },
@@ -514,9 +486,9 @@ client.on("messageCreate", async (message) => {
             // Bir önceki mesajdan önce bu hedefe ulaşılmadıysa ödül ver
             const oncekiKelime = chatData.words - args.length;
             if (oncekiKelime < hedef) {
-                const gercekOdul = hasCoinBoost(uid) ? reward.coins * 2 : reward.coins;
-                db.prepare(`UPDATE chat_stats SET coins = coins + ? WHERE user_id = ?`).run(gercekOdul, uid);
-                const boostNotu = hasCoinBoost(uid) ? " 💰 (Coin Boost aktif, 2x!)" : "";
+                const gercekOdul = await hasCoinBoost(uid) ? reward.coins * 2 : reward.coins;
+                await pool.query(`UPDATE chat_stats SET coins = coins + $1 WHERE user_id = $2`, [gercekOdul, uid]);
+                const boostNotu = await hasCoinBoost(uid) ? " 💰 (Coin Boost aktif, 2x!)" : "";
                 const turNotu = dongu > 0 ? ` *(${dongu + 1}. tur)*` : "";
                 message.channel.send(`🏆 Tebrikler ${message.author}, **${reward.words.toLocaleString()}** kelimeye ulaştın!${turNotu} **+${gercekOdul.toLocaleString()} coin**${boostNotu}`);
             }
@@ -533,8 +505,8 @@ client.on("messageCreate", async (message) => {
 
     /* ---------- ECONOMY ---------- */
     if (cmd === "!balance" || cmd === "!bal") {
-        const user = getUser(uid);
-        const chat = getChatData(uid);
+        const user = await getUser(uid);
+        const chat = await getChatData(uid);
         return message.reply(`💰 Bakiyen: **${user.coins + chat.coins}** coin`);
     }
 
@@ -544,7 +516,7 @@ client.on("messageCreate", async (message) => {
         if (vip === 1) cooldownMs = 5000;
         if (vip === 2) cooldownMs = 2500;
         if (hasCooldown(uid, "hunt", cooldownMs)) return message.reply(`⏳ Hunt için ${cooldownMs / 1000} saniye bekle!`);
-        const user = getUser(uid);
+        const user = await getUser(uid);
         if (user.coins < 10) return message.reply("❌ Hunt için 10 coin gerekiyor, yeterli paran yok!");
 
         // Ağırlıklı nadirlik sistemi (toplam %100)
@@ -571,7 +543,7 @@ client.on("messageCreate", async (message) => {
             return liste[liste.length - 1];
         }
 
-        const sansVar = hasSansArtirici(uid);
+        const sansVar = await hasSansArtirici(uid);
         let bulunan;
 
         if (sansVar) {
@@ -581,28 +553,30 @@ client.on("messageCreate", async (message) => {
                 sans: h.satis >= 22 ? h.sans * 3 : h.sans
             }));
             bulunan = rastgeleHayvan(guclendirilmis);
-            db.prepare("UPDATE vip_boosts SET sans_artirici = sans_artirici - 1 WHERE user_id = ?").run(uid);
-            const kalan = getVipBoost(uid).sans_artirici;
-            db.prepare("INSERT INTO animals (user_id, animal) VALUES (?, ?)").run(uid, bulunan.isim);
-            db.prepare("UPDATE users SET coins = coins - 10 WHERE id = ?").run(uid);
+            await pool.query(`UPDATE vip_boosts SET sans_artirici = sans_artirici - 1 WHERE user_id = $1`, [uid]);
+            const kalan = await getVipBoost(uid).sans_artirici;
+            await pool.query(`INSERT INTO animals (user_id, animal) VALUES ($1, $2)`, [uid, bulunan.isim]);
+            await pool.query(`UPDATE users SET coins = coins - 10 WHERE id = $1`, [uid]);
             return message.reply(`🎯 **${bulunan.isim}** yakaladın! ${bulunan.nadir} — Satış değeri: **${bulunan.satis} coin** | **-10 coin** harcandı.\n✨ Şans artırıcı kullanıldı! (${kalan} kullanım kaldı)`);
         } else {
             bulunan = rastgeleHayvan(hayvanlar);
         }
 
-        db.prepare("INSERT INTO animals (user_id, animal) VALUES (?, ?)").run(uid, bulunan.isim);
-        db.prepare("UPDATE users SET coins = coins - 10 WHERE id = ?").run(uid);
+        await pool.query(`INSERT INTO animals (user_id, animal) VALUES ($1, $2)`, [uid, bulunan.isim]);
+        await pool.query(`UPDATE users SET coins = coins - 10 WHERE id = $1`, [uid]);
         return message.reply(`🎯 **${bulunan.isim}** yakaladın! ${bulunan.nadir} — Satış değeri: **${bulunan.satis} coin** | **-10 coin** harcandı.`);
     }
 
     if (cmd === "!zoo") {
-        const rows = db.prepare("SELECT animal FROM animals WHERE user_id = ?").all(uid);
+        const res = await pool.query(`SELECT animal FROM animals WHERE user_id = $1`, [uid]);
+        const rows = res.rows;
         if (rows.length === 0) return message.reply("📭 Henüz hiç hayvanın yok!");
         return message.reply(`🦁 Hayvanların (${rows.length}): ${rows.map(r => r.animal).join(", ")}`);
     }
 
     if (cmd === "!sell") {
-        const rows = db.prepare("SELECT id, animal FROM animals WHERE user_id = ?").all(uid);
+        const res = await pool.query(`SELECT id, animal FROM animals WHERE user_id = $1`, [uid]);
+        const rows = res.rows;
         if (rows.length < 5) return message.reply(`❌ Satış yapabilmek için en az **5 hayvanın** olması gerekiyor! Şu an: **${rows.length}**`);
 
         const satisFiyati = {
@@ -622,8 +596,8 @@ client.on("messageCreate", async (message) => {
             if (miktar > rows.length) return message.reply(`❌ Sadece **${rows.length}** hayvanın var, ${miktar} tane satamazsın!`);
             const satilacaklar = rows.slice(-miktar);
             const kazanc = hesaplaKazanc(satilacaklar);
-            satilacaklar.forEach(r => db.prepare("DELETE FROM animals WHERE id = ?").run(r.id));
-            db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(kazanc, uid);
+            satilacaklar.forEach(r => pool.query(`DELETE FROM animals WHERE id = $1`, [r.id]));
+            await pool.query(`UPDATE users SET coins = coins + $1 WHERE id = $2`, [kazanc, uid]);
             return message.reply(`💸 **${miktar}** hayvan sattın! **+${kazanc} coin**`);
         }
 
@@ -642,8 +616,8 @@ client.on("messageCreate", async (message) => {
             try { await onayMesaj.delete(); } catch {}
 
             if (m.content.trim().toLowerCase() === "evet") {
-                rows.forEach(r => db.prepare("DELETE FROM animals WHERE id = ?").run(r.id));
-                db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(toplamKazanc, uid);
+                rows.forEach(r => pool.query(`DELETE FROM animals WHERE id = $1`, [r.id]));
+                await pool.query(`UPDATE users SET coins = coins + $1 WHERE id = $2`, [toplamKazanc, uid]);
                 message.channel.send(`💸 **${rows.length}** hayvanın satıldı! **+${toplamKazanc} coin**`);
             } else {
                 message.channel.send(`↩️ Satış iptal edildi. Belirli sayıda satmak için \`!sell <miktar>\` kullanabilirsin.\nÖrn: \`!sell 3\``);
@@ -664,20 +638,20 @@ client.on("messageCreate", async (message) => {
         if (hasCooldown(uid, "cf", 5000)) return message.reply("⏳ Coinflip için 5 saniye bekle!");
         const amount = parseInt(args[1]);
         if (isNaN(amount) || amount <= 0) return message.reply("❌ Geçerli miktar yaz. Örn: `!cf 100`");
-        const user = getUser(uid);
+        const user = await getUser(uid);
         if (user.coins < amount) return message.reply("❌ Yeterli paran yok!");
         const win = Math.random() < 0.5;
         if (win) {
-            db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(amount, uid);
+            await pool.query(`UPDATE users SET coins = coins + $1 WHERE id = $2`, [amount, uid]);
             return message.reply(`🎉 Kazandın! +${amount} coin`);
         } else {
-            db.prepare("UPDATE users SET coins = coins - ? WHERE id = ?").run(amount, uid);
+            await pool.query(`UPDATE users SET coins = coins - $1 WHERE id = $2`, [amount, uid]);
             return message.reply(`💸 Kaybettin! -${amount} coin`);
         }
     }
 
     if (cmd === "!daily") {
-        const user = getUser(uid);
+        const user = await getUser(uid);
         const now = Date.now();
         if (now - user.last_daily < 86400000) return message.reply("⏳ Günlük ödülünü zaten aldın!");
         const vip = getVipLevel(message.member);
@@ -685,7 +659,7 @@ client.on("messageCreate", async (message) => {
         let etiket = "";
         if (vip === 2) { odul = 2000; etiket = " 👑 VIP+ bonusu!"; }
         else if (vip === 1) { odul = 1000; etiket = " ⭐ VIP bonusu!"; }
-        db.prepare("UPDATE users SET coins = coins + ?, last_daily = ? WHERE id = ?").run(odul, now, uid);
+        await pool.query(`UPDATE users SET coins = coins + $1, last_daily = $2 WHERE id = $3`, [odul, now, uid]);
         return message.reply(`🎁 Günlük ödülünü aldın! **+${odul} coin**${etiket}`);
     }
 
@@ -724,10 +698,11 @@ client.on("messageCreate", async (message) => {
 
     if (cmd === "!profil") {
         const hedef = message.mentions.members.first() || message.member;
-        const user  = getUser(hedef.id);
-        const chat  = getChatData(hedef.id);
-        const lvl   = getLevelData(hedef.id);
-        const hayvanlar = db.prepare("SELECT COUNT(*) as sayi FROM animals WHERE user_id = ?").get(hedef.id);
+        const user  = await getUser(hedef.id);
+        const chat  = await getChatData(hedef.id);
+        const lvl   = await getLevelData(hedef.id);
+        const hayvanlarRes = await pool.query(`SELECT COUNT(*) as sayi FROM animals WHERE user_id = $1`, [hedef.id]);
+        const hayvanlar = hayvanlarRes.rows[0];
         const katilma = `<t:${Math.floor(hedef.joinedTimestamp / 1000)}:D>`;
 
         const embed = new EmbedBuilder()
@@ -749,12 +724,13 @@ client.on("messageCreate", async (message) => {
     }
 
     if (cmd === "!sıralama" || cmd === "!lb") {
-        const topUsers = db.prepare("SELECT id, coins FROM users ORDER BY coins DESC LIMIT 10").all();
+        const res = await pool.query(`SELECT id, coins FROM users ORDER BY coins DESC LIMIT 10`);
+        const topUsers = res.rows;
         if (topUsers.length === 0) return message.reply("📭 Henüz veri yok.");
 
         const liste = await Promise.all(topUsers.map(async (u, i) => {
-            const chat  = getChatData(u.id);
-            const toplam = u.coins + chat.coins;
+            const chat  = await getChatData(u.id);
+            const toplam = parseInt(u.coins) + parseInt(chat.coins);
             try {
                 const member = await message.guild.members.fetch(u.id).catch(() => null);
                 const isim = member ? member.user.username : `Bilinmeyen (${u.id})`;
@@ -782,13 +758,13 @@ client.on("messageCreate", async (message) => {
         if (rakip.user.bot)
             return message.reply("❌ Botla oynayamazsın!");
 
-        const user1 = getUser(message.author.id);
-        const user2 = getUser(rakip.id);
+        const user1 = await getUser(message.author.id);
+        const user2 = await getUser(rakip.id);
         if (user1.coins < 15) return message.reply("❌ Oynamak için **15 coin** gerekiyor, yeterli paran yok!");
         if (user2.coins < 15) return message.reply(`❌ ${rakip} yeterli coini yok! (15 coin gerekli)`);
 
-        db.prepare("UPDATE users SET coins = coins - 15 WHERE id = ?").run(message.author.id);
-        db.prepare("UPDATE users SET coins = coins - 15 WHERE id = ?").run(rakip.id);
+        await pool.query(`UPDATE users SET coins = coins - 15 WHERE id = $1`, [message.author.id]);
+        await pool.query(`UPDATE users SET coins = coins - 15 WHERE id = $1`, [rakip.id]);
 
         const board  = ["1","2","3","4","5","6","7","8","9"];
         let siradaki = message.author.id;
@@ -826,12 +802,12 @@ client.on("messageCreate", async (message) => {
             if (sonuc) {
                 collector.stop();
                 if (sonuc === "berabere") {
-                    db.prepare("UPDATE users SET coins = coins + 15 WHERE id = ?").run(message.author.id);
-                    db.prepare("UPDATE users SET coins = coins + 15 WHERE id = ?").run(rakip.id);
+                    await pool.query(`UPDATE users SET coins = coins + 15 WHERE id = $1`, [message.author.id]);
+                    await pool.query(`UPDATE users SET coins = coins + 15 WHERE id = $1`, [rakip.id]);
                     return ilkMesaj.edit(`🎮 **Yazı Taşı**\n${boardGoster()}\n🤝 **Berabere! Coinler iade edildi.**`);
                 }
                 const kazanan = sonuc === "X" ? message.author : rakip;
-                db.prepare("UPDATE users SET coins = coins + 30 WHERE id = ?").run(kazanan.id);
+                await pool.query(`UPDATE users SET coins = coins + 30 WHERE id = $1`, [kazanan.id]);
                 return ilkMesaj.edit(`🎮 **Yazı Taşı**\n${boardGoster()}\n🏆 **${kazanan} kazandı! +30 coin**`);
             }
 
@@ -840,10 +816,10 @@ client.on("messageCreate", async (message) => {
             ilkMesaj.edit(`🎮 **Yazı Taşı** — ${message.author} (X) vs ${rakip} (O)\n${boardGoster()}\n⏳ ${siradakiMention} hamleni yap!`);
         });
 
-        collector.on("end", (_, reason) => {
+        collector.on("end", async (_, reason) => {
             if (reason === "time") {
-                db.prepare("UPDATE users SET coins = coins + 15 WHERE id = ?").run(message.author.id);
-                db.prepare("UPDATE users SET coins = coins + 15 WHERE id = ?").run(rakip.id);
+                await pool.query(`UPDATE users SET coins = coins + 15 WHERE id = $1`, [message.author.id]);
+                await pool.query(`UPDATE users SET coins = coins + 15 WHERE id = $1`, [rakip.id]);
                 ilkMesaj.edit(`🎮 **Yazı Taşı**\n${boardGoster()}\n⏰ Süre doldu, coinler iade edildi!`);
             }
         });
@@ -853,9 +829,9 @@ client.on("messageCreate", async (message) => {
 
     if (cmd === "!tahmin") {
         if (hasCooldown(uid, "tahmin", 30000)) return message.reply("⏳ 30 saniye bekle!");
-        const user = getUser(uid);
+        const user = await getUser(uid);
         if (user.coins < 15) return message.reply("❌ Oynamak için **15 coin** gerekiyor!");
-        db.prepare("UPDATE users SET coins = coins - 15 WHERE id = ?").run(uid);
+        await pool.query(`UPDATE users SET coins = coins - 15 WHERE id = $1`, [uid]);
 
         const sayi = Math.floor(Math.random() * 100) + 1;
         let deneme = 0;
@@ -871,7 +847,7 @@ client.on("messageCreate", async (message) => {
             try { await m.delete(); } catch {}
 
             if (tahmin === sayi) {
-                db.prepare("UPDATE users SET coins = coins + 30 WHERE id = ?").run(uid);
+                await pool.query(`UPDATE users SET coins = coins + 30 WHERE id = $1`, [uid]);
                 collector.stop("kazandi");
                 return msg.edit(`🎯 **Sayı Tahmin**\n🏆 ${message.author} **${deneme}. denemede** buldu! Sayı: **${sayi}** — **+30 coin**`);
             }
@@ -894,9 +870,9 @@ client.on("messageCreate", async (message) => {
 
     if (cmd === "!kelime") {
         if (hasCooldown(uid, "kelime", 30000)) return message.reply("⏳ 30 saniye bekle!");
-        const user = getUser(uid);
+        const user = await getUser(uid);
         if (user.coins < 15) return message.reply("❌ Oynamak için **15 coin** gerekiyor!");
-        db.prepare("UPDATE users SET coins = coins - 15 WHERE id = ?").run(uid);
+        await pool.query(`UPDATE users SET coins = coins - 15 WHERE id = $1`, [uid]);
 
         const kelimeListesi = {
             "Hayvan": ["at","ayı","balık","baykuş","boğa","bufalo","ceylan","çita","deve","domuz","eşek","fare","fil","fok","geyik","goril","hamster","inek","jaguar","kaplumbağa","kaplan","kartal","kedi","keçi","kertenkele","kırlangıç","kirpi","koyun","köpek","köpekbalığı","kurt","kuş","kurbağa","leopar","leylek","maymun","martı","papağan","penguen","puma","serçe","sincap","sırtlan","tavşan","tavuk","timsah","tilki","yılan","zebra","zürafa","aslan","arı","akrep","çekirge","karga","balina","yunus","ahtapot","denizatı","yengeç","istakoz","karides","ördek","horoz","hindi","güvercin","doğan","şahin","akbaba","flamingo","pelikan","kumru","çulluk","atmaca","karınca","böcek","kelebek","uğurböceği","sinek","sivrisinek","arıkuşu","deve","flamingo","ibis","anka"],
@@ -937,7 +913,7 @@ client.on("messageCreate", async (message) => {
             try { await m.delete(); } catch {}
 
             if (kelimeListesi[kategori].includes(kelime)) {
-                db.prepare("UPDATE users SET coins = coins + 30 WHERE id = ?").run(uid);
+                await pool.query(`UPDATE users SET coins = coins + 30 WHERE id = $1`, [uid]);
                 collector.stop("kazandi");
                 return msg.edit(`🔤 **Kelime Oyunu**\n✅ ${message.author} **"${m.content.trim()}"** dedi! **+30 coin**`);
             }
@@ -964,7 +940,7 @@ client.on("messageCreate", async (message) => {
         const vip = getVipLevel(message.member);
         if (vip === 0) return message.reply("❌ Bu komut sadece **VIP** ve **VIP+** üyelerine özeldir!");
 
-        const boost = getVipBoost(uid);
+        const boost = await getVipBoost(uid);
         const coinBoostAktif = boost.coin_boost_until > Date.now();
         const kalanSure = coinBoostAktif
             ? `<t:${Math.floor(boost.coin_boost_until / 1000)}:R> bitiyor`
@@ -1005,20 +981,20 @@ client.on("messageCreate", async (message) => {
         };
 
         const fiyat = fiyatlar[secim];
-        const user  = getUser(uid);
+        const user  = await getUser(uid);
 
         if (user.coins < fiyat)
             return message.reply(`❌ Yeterli coin yok! Bu ürün **${fiyat.toLocaleString()} coin** ama bakiyen **${user.coins.toLocaleString()} coin**.`);
 
-        db.prepare("UPDATE users SET coins = coins - ? WHERE id = ?").run(fiyat, uid);
-        getVipBoost(uid);
+        await pool.query(`UPDATE users SET coins = coins - $1 WHERE id = $2`, [fiyat, uid]);
+        await getVipBoost(uid);
 
         if (secim === 1) {
             // Coin boost — eğer zaten aktifse üzerine 1 saat ekle
-            const boost = getVipBoost(uid);
+            const boost = await getVipBoost(uid);
             const base  = Math.max(boost.coin_boost_until, Date.now());
             const yeni  = base + 3600000;
-            db.prepare("UPDATE vip_boosts SET coin_boost_until = ? WHERE user_id = ?").run(yeni, uid);
+            await pool.query(`UPDATE vip_boosts SET coin_boost_until = $1 WHERE user_id = $2`, [yeni, uid]);
             return message.reply(`✅ 💰 **Coin Boost** satın aldın! **1 saat** boyunca 2x coin kazanacaksın. Bitiş: <t:${Math.floor(yeni / 1000)}:R>`);
         }
 
@@ -1028,7 +1004,7 @@ client.on("messageCreate", async (message) => {
             const eklenenler = [];
             for (let i = 0; i < 5; i++) {
                 const h = hayvanlar[Math.floor(Math.random() * hayvanlar.length)];
-                db.prepare("INSERT INTO animals (user_id, animal) VALUES (?, ?)").run(uid, h);
+                await pool.query(`INSERT INTO animals (user_id, animal) VALUES ($1, $2)`, [uid, h]);
                 eklenenler.push(h);
             }
             return message.reply(`✅ 🎁 **Hayvan Paketi** satın aldın! Envantere eklenen hayvanlar:\n${eklenenler.join(", ")}`);
@@ -1036,8 +1012,8 @@ client.on("messageCreate", async (message) => {
 
         if (secim === 3) {
             // Şans artırıcı — 5 kullanım ekle
-            db.prepare("UPDATE vip_boosts SET sans_artirici = sans_artirici + 5 WHERE user_id = ?").run(uid);
-            const yeni = getVipBoost(uid).sans_artirici;
+            await pool.query(`UPDATE vip_boosts SET sans_artirici = sans_artirici + 5 WHERE user_id = $1`, [uid]);
+            const yeni = await getVipBoost(uid).sans_artirici;
             return message.reply(`✅ ✨ **Şans Artırıcı** satın aldın! Artık **${yeni} hunt**'ta %40 nadir hayvan şansın var!`);
         }
     }
@@ -1095,9 +1071,9 @@ client.on("messageCreate", async (message) => {
 
             if (secim === dogruIndex) {
                 // Coin boost aktifse 2x ver
-                const gercekOdul = hasCoinBoost(uid) ? odul * 2 : odul;
-                db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(gercekOdul, uid);
-                const boostNotu = hasCoinBoost(uid) ? " 💰 (Coin Boost aktif, 2x!)" : "";
+                const gercekOdul = await hasCoinBoost(uid) ? odul * 2 : odul;
+                await pool.query(`UPDATE users SET coins = coins + $1 WHERE id = $2`, [gercekOdul, uid]);
+                const boostNotu = await hasCoinBoost(uid) ? " 💰 (Coin Boost aktif, 2x!)" : "";
                 hazineMesaj.edit({
                     embeds: [
                         EmbedBuilder.from(hazineMesaj.embeds[0])
@@ -1142,7 +1118,7 @@ client.on("messageCreate", async (message) => {
     if (cmd === "!vipbilgi") {
         const vip = getVipLevel(message.member);
         if (vip === 0) return message.reply("❌ Bu komut sadece VIP üyelere özeldir!");
-        const boost = getVipBoost(uid);
+        const boost = await getVipBoost(uid);
         const coinBoostAktif = boost.coin_boost_until > Date.now();
 
         const embed = new EmbedBuilder()
@@ -1167,8 +1143,8 @@ client.on("messageCreate", async (message) => {
         const user = message.mentions.users.first();
         const amount = parseInt(args[2]);
         if (!user || isNaN(amount)) return message.reply("❌ Kullanım: !addcoins @user miktar");
-        getUser(user.id);
-        db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(amount, user.id);
+        await getUser(user.id);
+        await pool.query(`UPDATE users SET coins = coins + $1 WHERE id = $2`, [amount, user.id]);
         return message.reply(`✅ ${user.username} kullanıcısına ${amount} coin eklendi.`);
     }
 
@@ -1177,8 +1153,8 @@ client.on("messageCreate", async (message) => {
         const user = message.mentions.users.first();
         const amount = parseInt(args[2]);
         if (!user || isNaN(amount)) return message.reply("❌ Kullanım: !removecoins @user miktar");
-        getUser(user.id);
-        db.prepare("UPDATE users SET coins = coins - ? WHERE id = ?").run(amount, user.id);
+        await getUser(user.id);
+        await pool.query(`UPDATE users SET coins = coins - $1 WHERE id = $2`, [amount, user.id]);
         return message.reply(`✅ ${user.username} kullanıcısından ${amount} coin silindi.`);
     }
 
@@ -1758,7 +1734,12 @@ const YOUTUBE_CHANNEL_ID    = process.env.YOUTUBE_CHANNEL_ID;
 const DISCORD_VIDEO_CHANNEL = process.env.DISCORD_VIDEO_CHANNEL_ID;
 const VIDEO_PING_ROLE       = process.env.VIDEO_PING_ROLE_ID;
 
-let sonVideoId = db.prepare("SELECT last_video_id FROM youtube_state WHERE id = 1").get()?.last_video_id || null;
+let sonVideoId = null;
+
+async function initSonVideoId() {
+    const res = await pool.query(`SELECT last_video_id FROM youtube_state WHERE id = 1`);
+    sonVideoId = res.rows[0]?.last_video_id || null;
+}
 
 async function youtubeKontrol() {
     try {
@@ -1773,7 +1754,7 @@ async function youtubeKontrol() {
         if (!videoId || videoId === sonVideoId) return;
 
         sonVideoId = videoId;
-        db.prepare("UPDATE youtube_state SET last_video_id = ? WHERE id = 1").run(videoId);
+        await pool.query(`UPDATE youtube_state SET last_video_id = $1 WHERE id = 1`, [videoId]);
 
         const title    = video.snippet.title;
         const thumb    = video.snippet.thumbnails.high.url;
