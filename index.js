@@ -64,6 +64,15 @@ async function initDB() {
             xp_boost_until BIGINT DEFAULT 0,
             sans_artirici INTEGER DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS mod_logs (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            islem TEXT NOT NULL,
+            sebep TEXT DEFAULT 'Belirtilmedi',
+            sure TEXT DEFAULT 'Kalıcı',
+            yetkili_id TEXT,
+            tarih BIGINT NOT NULL
+        );
     `);
     await pool.query(`INSERT INTO tickets (id, count) VALUES (1, 1) ON CONFLICT DO NOTHING;`);
     await pool.query(`INSERT INTO youtube_state (id, last_video_id) VALUES (1, '') ON CONFLICT DO NOTHING;`);
@@ -198,6 +207,10 @@ async function handleSpam(message) {
 
     try {
         await member.timeout(sureSaniye * 1000, "Otomatik spam koruması");
+        await pool.query(
+            `INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES ($1, $2, $3, $4, $5, $6)`,
+            [message.author.id, "Mute", "Otomatik spam koruması", `${sureSaniye} saniye`, client.user.id, Date.now()]
+        );
         const uyari = await message.channel.send(mesaj);
         setTimeout(() => uyari.delete().catch(() => {}), 5000);
     } catch {}
@@ -388,6 +401,10 @@ async function handleKufur(message, tur) {
 
     try {
         await member.timeout(sureSaniye * 1000, `Otomatik: ${tur}`);
+        await pool.query(
+            `INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES ($1, $2, $3, $4, $5, $6)`,
+            [message.author.id, "Mute", `Otomatik: ${tur}`, `${sureSaniye} saniye`, client.user.id, Date.now()]
+        );
         const uyari = await message.channel.send(mesaj);
         setTimeout(() => uyari.delete().catch(() => {}), 6000);
     } catch {}
@@ -1137,6 +1154,47 @@ client.on("messageCreate", async (message) => {
         return message.channel.send({ embeds: [embed] });
     }
 
+    if (cmd === "!gecmis") {
+        if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers) &&
+            !message.member.permissions.has(PermissionsBitField.Flags.Administrator))
+            return message.reply("❌ Bu komutu kullanma yetkin yok.");
+
+        const hedef = message.mentions.members.first();
+        if (!hedef) return message.reply("❌ Kullanım: `!gecmis @kullanıcı`");
+
+        const res = await pool.query(
+            `SELECT * FROM mod_logs WHERE user_id = $1 ORDER BY tarih DESC LIMIT 20`,
+            [hedef.id]
+        );
+        const kayitlar = res.rows;
+
+        if (kayitlar.length === 0) {
+            return message.reply(`📭 **${hedef.user.username}** adlı kullanıcının geçmişte hiç ceza kaydı yok.`);
+        }
+
+        const muteSayisi = kayitlar.filter(k => k.islem === "Mute").length;
+        const banSayisi  = kayitlar.filter(k => k.islem === "Ban").length;
+
+        const liste = kayitlar.map((k, i) => {
+            const tarih   = `<t:${Math.floor(k.tarih / 1000)}:D>`;
+            const yetkili = k.yetkili_id === client.user.id ? "🤖 Otomatik" : `<@${k.yetkili_id}>`;
+            const islem   = k.islem === "Ban" ? "🔨 Ban" : "🔇 Mute";
+            return `**${i + 1}.** ${islem} — ${tarih}\n> Süre: ${k.sure} | Sebep: ${k.sebep} | Yetkili: ${yetkili}`;
+        }).join("\n\n");
+
+        const embed = new EmbedBuilder()
+            .setTitle(`📋 ${hedef.user.username} — Ceza Geçmişi`)
+            .setThumbnail(hedef.user.displayAvatarURL({ dynamic: true }))
+            .setDescription(
+                `🔇 **Toplam Mute:** ${muteSayisi}\n🔨 **Toplam Ban:** ${banSayisi}\n\n${liste}`
+            )
+            .setColor(0xFF4444)
+            .setFooter({ text: "Freaktsing • Moderasyon Geçmişi" })
+            .setTimestamp();
+
+        return message.channel.send({ embeds: [embed] });
+    }
+
     /* ---------- ADMIN ---------- */
     if (cmd === "!addcoins") {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
@@ -1203,7 +1261,10 @@ client.on("messageCreate", async (message) => {
 
         try {
             await hedef.timeout(sureMs || (28 * 24 * 60 * 60 * 1000), sebep);
-
+            await pool.query(
+                `INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES ($1, $2, $3, $4, $5, $6)`,
+                [hedef.id, "Mute", sebep, sureMesvaji(sureMs), message.author.id, Date.now()]
+            );
             const embed = new EmbedBuilder()
                 .setTitle("🔇 Kullanıcı Susturuldu")
                 .addFields(
@@ -1270,6 +1331,10 @@ client.on("messageCreate", async (message) => {
 
         try {
             await hedef.ban({ reason: sebep });
+            await pool.query(
+                `INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES ($1, $2, $3, $4, $5, $6)`,
+                [hedef.id, "Ban", sebep, sureMesvaji(sureMs), message.author.id, Date.now()]
+            );
 
             const embed = new EmbedBuilder()
                 .setTitle("🔨 Kullanıcı Banlandı")
