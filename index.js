@@ -7,6 +7,20 @@ app.listen(process.env.PORT || 3000, "0.0.0.0", () => console.log("Web server a�
 
 const { Client, GatewayIntentBits, PermissionsBitField, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require("discord.js");
 
+/* ================= JSON VERİTABANI ================= */
+
+const { JSONDatabase, flushDatabase } = require("./db");
+let db;
+
+async function connectDB() {
+    db = new JSONDatabase();
+    console.log("JSON veritabanı hazır! (database.json dosyasına kaydediliyor)");
+}
+
+// Bot kapanırken bekleyen yazma işlemlerini diske kaydet, veri kaybını önle
+process.on("SIGINT", () => { flushDatabase(); process.exit(0); });
+process.on("SIGTERM", () => { flushDatabase(); process.exit(0); });
+
 /* ================= VERİTABANI YARDIMCI FONKSİYONLARI ================= */
 
 async function getUser(id) {
