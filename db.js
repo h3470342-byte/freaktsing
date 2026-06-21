@@ -1,23 +1,34 @@
 const fs = require("fs");
 
-const dbFile = "./db.json";
+const FILE = "./database.json";
 
-// DB yoksa oluştur
-if (!fs.existsSync(dbFile)) {
-  fs.writeFileSync(dbFile, JSON.stringify({}));
+// dosya yoksa oluştur
+if (!fs.existsSync(FILE)) {
+  fs.writeFileSync(FILE, JSON.stringify({}));
 }
 
-// Veriyi oku
+// DB oku
 function readDB() {
-  return JSON.parse(fs.readFileSync(dbFile, "utf-8"));
+  try {
+    const data = fs.readFileSync(FILE, "utf-8");
+    return JSON.parse(data);
+  } catch (err) {
+    return {};
+  }
 }
 
-// Veriyi kaydet
+// DB yaz
 function writeDB(data) {
-  fs.writeFileSync(dbFile, JSON.stringify(data, null, 2));
+  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+}
+
+// güvenli kayıt (boşta tutuyorsun ama lazım olabilir)
+function flushDatabase() {
+  // şimdilik ekstra cache yok, ama hata önler
 }
 
 module.exports = {
   readDB,
-  writeDB
+  writeDB,
+  flushDatabase
 };
