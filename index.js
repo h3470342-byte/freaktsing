@@ -12,8 +12,7 @@ const { Client, GatewayIntentBits, PermissionsBitField, EmbedBuilder, ActionRowB
 const db = require("./db");
 
 async function connectDB() {
-    db = new JSONDatabase();
-    console.log("JSON veritabanı hazır! (database.json dosyasına kaydediliyor)");
+    console.log("JSON veritabanı hazır!");
 }
 
 // Bot kapanırken bekleyen yazma işlemlerini diske kaydet, veri kaybını önle
