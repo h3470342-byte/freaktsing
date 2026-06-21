@@ -9,8 +9,7 @@ const { Client, GatewayIntentBits, PermissionsBitField, EmbedBuilder, ActionRowB
 
 /* ================= JSON VERİTABANI ================= */
 
-const { JSONDatabase, flushDatabase } = require("./db");
-let db;
+const db = require("./db");
 
 async function connectDB() {
     db = new JSONDatabase();
