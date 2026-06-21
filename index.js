@@ -6,18 +6,6 @@ app.get("/", (req, res) => res.send("Bot aktif"));
 app.listen(process.env.PORT || 3000, "0.0.0.0", () => console.log("Web server açık"));
 
 const { Client, GatewayIntentBits, PermissionsBitField, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require("discord.js");
-const { MongoClient } = require("mongodb");
-
-/* ================= MONGODB ================= */
-
-const mongoClient = new MongoClient(process.env.MONGODB_URI);
-let db;
-
-async function connectDB() {
-    await mongoClient.connect();
-    db = mongoClient.db("freaktsing");
-    console.log("MongoDB bağlandı!");
-}
 
 /* ================= VERİTABANI YARDIMCI FONKSİYONLARI ================= */
 
