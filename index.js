@@ -219,7 +219,7 @@ const kufurListesi = [
 ];
 
 const hakaretListesi = [
-    "defol","gitburdan","cekil","lanet","kahrolsun","geber","kahret","lanetli","haysiyetsiz","serefsiz","namussuz",
+    "defol","gitburdan","lanet","kahrolsun","geber","kahret","lanetli","haysiyetsiz","serefsiz","namussuz",
     "rezalet","utanmaz","yuzsuz","arsiz","gerizerali","gerizekalili","mal","yavsak","dangalak",
     "anneni","bacini","karini","ezik","pislik","serseri","zibidi","hergele","lavuk","ocun","ocunu"
 ];
