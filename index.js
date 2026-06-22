@@ -975,6 +975,7 @@ client.on("messageCreate", async (message) => {
     }
 
     if (cmd === "!ticketpanel") {
+        console.log("ticketpanel komutu alindi, kullanici:", uid);
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply("❌ Sadece adminler.");
         const embed = new EmbedBuilder()
             .setTitle("🎫 Freaktsing Destek Merkezi")
