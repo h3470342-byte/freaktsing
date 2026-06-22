@@ -282,6 +282,11 @@ client.on("guildMemberAdd", async (member) => {
 
 /* ================= MESSAGE ================= */
 
+/* ================= ÇEKİLİŞ & TICKET ================= */
+
+const aktifCekilisler = new Map();
+let sonBitenCekilis = null;
+
 client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (!message.guild) return;
@@ -1029,9 +1034,6 @@ client.on("messageCreate", async (message) => {
 });
 
 /* ================= TICKET & ÇEKİLİŞ INTERACTION ================= */
-
-const aktifCekilisler = new Map();
-let sonBitenCekilis = null;
 
 client.on("interactionCreate", async (interaction) => {
     if (!interaction.isButton()) return;
