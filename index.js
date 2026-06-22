@@ -201,7 +201,7 @@ function normalizeText(text) {
         .replace(/5/g,'s').replace(/6/g,'g').replace(/7/g,'t').replace(/8/g,'b').replace(/9/g,'g')
         .replace(/ş/g,'s').replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c').replace(/ı/g,'i')
         .replace(/İ/g,'i').replace(/Ş/g,'s').replace(/Ğ/g,'g').replace(/Ü/g,'u').replace(/Ö/g,'o').replace(/Ç/g,'c')
-        .replace(/@/g,'a').replace(/\$/g,'s').replace(/!/g,'i').replace(/\+/g,'t')
+        .replace(/@/g,'a').replace(/\$/g,'s').replace(/\+/g,'t')
         .replace(/[\s\.\-\_\*\,\;\:\'\"\`\~\^\|\\\/#%&\(\)\[\]\{\}<>]/g,'')
         .replace(/[^a-z0-9]/g,'');
 }
@@ -211,7 +211,7 @@ function removeSeparators(text) { return text.replace(/[.\-_\s*]+/g,''); }
 
 const kufurListesi = [
     "orospu","orospucocugu","orosbucocugu","oc","got","sik","yarrak","amk","bok","pic","piclik","ibne","kahpe","kaltak","surtuk",
-    "fahise","haysiyetsiz","serefsiz","namussuz","alcak","rezil","asagilik","soysuz","adi","oe","or","siktir","it",
+    "fahise","haysiyetsiz","serefsiz","namussuz","alcak","rezil","asagilik","soysuz","adi","oe","or","siktir",
     "sikik","sikiyor","sikeyim","siksin","sikerim","gotlek","gote","gotur","gotunu","yaragi","yarragi","amcik","amina","aminakoyim",
     "piclerin","picler","picin","ibnelik","ibneler","siktiret","siktirin","oruspu","orusbucocugu","ocunu","ocunun","kahpeler","kaltaklar",
     "fuck","fucker","fucking","fck","fuk","shit","sht","bitch","btch","asshole","ass","cunt","dick","dck","cock",
