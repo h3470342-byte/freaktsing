@@ -128,8 +128,8 @@ const TOKEN              = process.env.TOKEN;
 const SUPPORT_ROLE       = "1516389895457996850";
 const AUTO_ROLE          = "1516220513595162744";
 const WELCOME_CHANNEL_ID = "1516790940440985681";
-const VIP_ROLE           = "1517595427577266316";
-const VIP_PLUS_ROLE      = "1517592377106104371";
+const VIP_ROLE           = "1517592377106104371";
+const VIP_PLUS_ROLE      = "1517595427577266316";
 
 function getVipLevel(member) {
     if (member.roles.cache.has(VIP_PLUS_ROLE)) return 2;
