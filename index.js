@@ -193,55 +193,30 @@ function hasCooldown(userId, cmd, ms) {
     return true;
 }
 
-/* ================= GELİŞMİŞ KÜFÜR KONTROL SİSTEMİ ================= */
-
-function normalizeText(text) {
-    return text.toLowerCase()
-        .replace(/0/g,'o').replace(/1/g,'i').replace(/3/g,'e').replace(/4/g,'a')
-        .replace(/5/g,'s').replace(/6/g,'g').replace(/7/g,'t').replace(/8/g,'b').replace(/9/g,'g')
-        .replace(/ş/g,'s').replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c').replace(/ı/g,'i')
-        .replace(/İ/g,'i').replace(/Ş/g,'s').replace(/Ğ/g,'g').replace(/Ü/g,'u').replace(/Ö/g,'o').replace(/Ç/g,'c')
-        .replace(/@/g,'a').replace(/\$/g,'s').replace(/\+/g,'t')
-        .replace(/[\s\.\-\_\*\,\;\:\'\"\`\~\^\|\\\/#%&\(\)\[\]\{\}<>]/g,'')
-        .replace(/[^a-z0-9]/g,'');
-}
-
-function collapseRepeats(text) { return text.replace(/(.)\1+/g,'$1'); }
-function removeSeparators(text) { return text.replace(/[.\-_\s*]+/g,''); }
+/* ================= KÜFÜR KONTROL SİSTEMİ ================= */
 
 const kufurListesi = [
-    "orospu","orospucocugu","orosbucocugu","oc","got","sik","yarrak","amk","bok","pic","piclik","ibne","kahpe","kaltak","surtuk",
-    "fahise","haysiyetsiz","serefsiz","namussuz","alcak","rezil","asagilik","soysuz","adi","oe","or","siktir",
-    "sikik","sikiyor","sikeyim","siksin","sikerim","gotlek","gote","gotur","gotunu","yaragi","yarragi","amcik","amina","aminakoyim",
-    "piclerin","picler","picin","ibnelik","ibneler","siktiret","siktirin","oruspu","orusbucocugu","ocunu","ocunun","kahpeler","kaltaklar",
-    "fuck","fucker","fucking","fck","fuk","shit","sht","bitch","btch","asshole","ass","cunt","dick","dck","cock",
-    "nigga","niger","nigger","bastard","whore","slut","pussy","motherfucker","mf","retard","retarded"
+    "orospu","orospu cocugu","orosbucocugu","oç","göt","sik","yarrak",
+    "amk","bok","piç","piçlik","ibne","kahpe","kaltak","sürtük",
+    "fahişe","haysiyetsiz","şerefsiz","namussuz","alçak","rezil","aşağılık","soysuz",
+    "oe","or","siktir","sikeyim","sikiyor","orospu çocuğu",
+    "fuck","fucking","fucker","shit","bitch","asshole","cunt","nigger","nigga"
 ];
 
 const hakaretListesi = [
-    "defol","gitburdan","lanet","kahrolsun","geber","kahret","lanetli","haysiyetsiz","serefsiz","namussuz",
-    "rezalet","utanmaz","yuzsuz","arsiz","gerizerali","gerizekalili","mal","yavsak","dangalak",
-    "anneni","bacini","karini","ezik","pislik","serseri","zibidi","hergele","lavuk","ocun","ocunu"
+    "defol","git burdan","lanet","kahrolsun","gebер","kahret",
+    "rezalet","utanmaz","yüzsüz","arsız","gerizekalı","geri zekalı",
+    "mal","yavşak","dangalak","pislik","serseri","hergele"
 ];
 
-function buildFlexRegex(word) {
-    const escaped = word.split('').map(c => c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('[^a-z]*');
-    return new RegExp(escaped, 'i');
-}
-
-const kufurRegexler   = kufurListesi.map(k  => ({ regex: buildFlexRegex(normalizeText(k))  }));
-const hakaretRegexler = hakaretListesi.map(h => ({ regex: buildFlexRegex(normalizeText(h)) }));
-
 function kufurKontrol(icerik) {
-    const v = [normalizeText(icerik), collapseRepeats(normalizeText(icerik)), normalizeText(removeSeparators(icerik)), collapseRepeats(normalizeText(removeSeparators(icerik)))];
-    for (const ver of v) for (const { regex } of kufurRegexler) if (regex.test(ver)) return true;
-    return false;
+    const lower = icerik.toLowerCase();
+    return kufurListesi.some(k => lower.includes(k));
 }
 
 function hakaretKontrol(icerik) {
-    const v = [normalizeText(icerik), collapseRepeats(normalizeText(icerik)), normalizeText(removeSeparators(icerik)), collapseRepeats(normalizeText(removeSeparators(icerik)))];
-    for (const ver of v) for (const { regex } of hakaretRegexler) if (regex.test(ver)) return true;
-    return false;
+    const lower = icerik.toLowerCase();
+    return hakaretListesi.some(h => lower.includes(h));
 }
 
 async function handleKufur(message, tur) {
