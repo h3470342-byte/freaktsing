@@ -193,30 +193,37 @@ function hasCooldown(userId, cmd, ms) {
     return true;
 }
 
-/* ================= KÜFÜR KONTROL SİSTEMİ ================= */
+/* ================= KÜFÜR VE HAKARET KONTROL SİSTEMİ ================= */
 
 const kufurListesi = [
-    "orospu","orospu cocugu","orosbucocugu","oç","göt","sik","yarrak",
-    "amk","bok","piç","piçlik","ibne","kahpe","kaltak","sürtük",
-    "fahişe","haysiyetsiz","şerefsiz","namussuz","alçak","rezil","aşağılık","soysuz",
-    "oe","or","siktir","sikeyim","sikiyor","orospu çocuğu",
-    "fuck","fucking","fucker","shit","bitch","asshole","cunt","nigger","nigga"
+    "orospu", "orospu cocugu", "orosbucocugu", "oç", "göt", "sik", "yarrak",
+    "amk", "bok", "piç", "piçlik", "ibne", "kahpe", "kaltak", "sürtük",
+    "fahişe", "haysiyetsiz", "şerefsiz", "namussuz", "alçak", "rezil", "aşağılık", "soysuz",
+    "oe", "or", "siktir", "sikeyim", "sikiyor", "fuck", "fucking", "fucker", "shit", 
+    "bitch", "asshole", "cunt", "nigger", "nigga"
 ];
 
 const hakaretListesi = [
-    "defol","git burdan","lanet","kahrolsun","gebер","kahret",
-    "rezalet","utanmaz","yüzsüz","arsız","gerizekalı","geri zekalı",
-    "mal","yavşak","dangalak","pislik","serseri","hergele"
+    "defol", "git burdan", "lanet", "kahrolsun", "gebep", "kahret",
+    "rezalet", "utanmaz", "yüzsüz", "arsız", "gerizekalı", "geri zekalı",
+    "mal", "yavşak", "dangalak", "pislik", "serseri", "hergele"
 ];
 
+function temizle(metin) {
+    return metin.toLowerCase()
+        .replace(/ç/g, 'c').replace(/ş/g, 's').replace(/ı/g, 'i')
+        .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ö/g, 'o')
+        .replace(/[^a-z0-9]/g, ''); 
+}
+
 function kufurKontrol(icerik) {
-    const lower = icerik.toLowerCase();
-    return kufurListesi.some(k => lower.includes(k));
+    const temizMetin = temizle(icerik);
+    return kufurListesi.some(k => temizMetin.includes(temizle(k)));
 }
 
 function hakaretKontrol(icerik) {
-    const lower = icerik.toLowerCase();
-    return hakaretListesi.some(h => lower.includes(h));
+    const temizMetin = temizle(icerik);
+    return hakaretListesi.some(h => temizMetin.includes(temizle(h)));
 }
 
 async function handleKufur(message, tur) {
@@ -224,16 +231,28 @@ async function handleKufur(message, tur) {
     if (!member) return;
     if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
     if (member.roles.cache.has(SUPPORT_ROLE)) return;
+
     try { await message.delete(); } catch {}
+
     let sureSaniye = 0, mesaj = "";
-    if (tur === "kufur") { sureSaniye = 10800; mesaj = `🤬 ${message.author} küfür ettiği için **3 saat** zaman aşımı aldı!`; }
-    else { sureSaniye = 3600; mesaj = `⚠️ ${message.author} hakaret ettiği için **1 saat** zaman aşımı aldı!`; }
+    if (tur === "kufur") { 
+        sureSaniye = 10800; 
+        mesaj = `🤬 ${message.author} küfür ettiği için **3 saat** zaman aşımı aldı!`; 
+    } else { 
+        sureSaniye = 3600; 
+        mesaj = `⚠️ ${message.author} hakaret ettiği için **1 saat** zaman aşımı aldı!`; 
+    }
+
     try {
         await member.timeout(sureSaniye * 1000, `Otomatik: ${tur}`);
-        db.prepare("INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES (?, ?, ?, ?, ?, ?)").run(message.author.id, "Mute", `Otomatik: ${tur}`, `${sureSaniye} saniye`, "bot", Date.now());
+        db.prepare("INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(message.author.id, "Mute", `Otomatik: ${tur}`, `${sureSaniye} saniye`, "bot", Date.now());
+        
         const uyari = await message.channel.send(mesaj);
         setTimeout(() => uyari.delete().catch(() => {}), 6000);
-    } catch {}
+    } catch (e) {
+        console.error("Mute atılırken hata oluştu: ", e);
+    }
 }
 
 /* ================= READY ================= */
