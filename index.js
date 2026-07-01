@@ -254,7 +254,31 @@ async function handleKufur(message, tur) {
         console.error("Mute atılırken hata oluştu: ", e);
     }
 }
+/* ================= REKLAM KORUMASI ================= */
 
+const reklamRegex =
+/(discord\.gg\/|discord\.com\/invite\/|youtube\.com\/|youtu\.be\/|instagram\.com\/|tiktok\.com\/|twitch\.tv\/|kick\.com\/|facebook\.com\/|x\.com\/|twitter\.com\/|https?:\/\/|www\.)/i;
+
+async function handleReklam(message) {
+    const member = message.member;
+    if (!member) return;
+
+    if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+    if (member.roles.cache.has(SUPPORT_ROLE)) return;
+
+    try { await message.delete(); } catch {}
+
+    try {
+        await member.timeout(3 * 24 * 60 * 60 * 1000, "Otomatik Reklam");
+
+        db.prepare("INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(message.author.id, "Mute", "Otomatik Reklam", "3 gün", "bot", Date.now());
+
+        message.channel.send(`🚫 ${message.author} reklam yaptığı için **3 gün susturuldu!**`);
+    } catch (err) {
+        console.error(err);
+    }
+}
 /* ================= READY ================= */
 
 client.once("ready", () => {
@@ -282,11 +306,28 @@ const aktifCekilisler = new Map();
 let sonBitenCekilis = null;
 
 client.on("messageCreate", async (message) => {
-    if (message.author.bot) return;
-    if (!message.guild) return;
-    if (isSpam(message.author.id, message.content)) { await handleSpam(message); return; }
-    if (kufurKontrol(message.content)) { await handleKufur(message, "kufur"); return; }
-    if (hakaretKontrol(message.content)) { await handleKufur(message, "hakaret"); return; }
+   if (message.author.bot) return;
+if (!message.guild) return;
+
+if (isSpam(message.author.id, message.content)) {
+    await handleSpam(message);
+    return;
+}
+
+if (reklamRegex.test(message.content)) {
+    await handleReklam(message);
+    return;
+}
+
+if (kufurKontrol(message.content)) {
+    await handleKufur(message, "kufur");
+    return;
+}
+
+if (hakaretKontrol(message.content)) {
+    await handleKufur(message, "hakaret");
+    return;
+}
 
     const args = message.content.trim().split(/\s+/);
     const cmd  = args[0].toLowerCase();
