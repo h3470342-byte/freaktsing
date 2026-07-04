@@ -199,7 +199,7 @@ const kufurListesi = [
     "orospu", "orospu cocugu", "orosbucocugu", "oç", "göt", "sik", "yarrak",
     "amk", "bok", "piç", "piçlik", "ibne", "kahpe", "kaltak", "sürtük",
     "fahişe", "haysiyetsiz", "şerefsiz", "namussuz", "alçak", "rezil", "aşağılık", "soysuz",
-    "oe", "or", "siktir", "sikeyim", "sikiyor", "fuck", "fucking", "fucker", "shit", 
+    "oe", "or", "siktir", "sikeyim", "sikiyor", "fuck", "fucking", "fucker", "shit",
     "bitch", "asshole", "cunt", "nigger", "nigga"
 ];
 
@@ -210,48 +210,79 @@ const hakaretListesi = [
 ];
 
 function temizle(metin) {
-    return metin.toLowerCase()
-        .replace(/ç/g, 'c').replace(/ş/g, 's').replace(/ı/g, 'i')
-        .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ö/g, 'o')
-        .replace(/[^a-z0-9]/g, ''); 
+    return metin
+        .toLowerCase()
+        .replace(/ç/g, "c")
+        .replace(/ş/g, "s")
+        .replace(/ı/g, "i")
+        .replace(/ğ/g, "g")
+        .replace(/ü/g, "u")
+        .replace(/ö/g, "o")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function tamEslesme(metin, liste) {
+    const temizMetin = ` ${temizle(metin)} `;
+
+    return liste.some(kelime => {
+        const aranan = ` ${temizle(kelime)} `;
+        return temizMetin.includes(aranan);
+    });
 }
 
 function kufurKontrol(icerik) {
-    const temizMetin = temizle(icerik);
-    return kufurListesi.some(k => temizMetin.includes(temizle(k)));
+    return tamEslesme(icerik, kufurListesi);
 }
 
 function hakaretKontrol(icerik) {
-    const temizMetin = temizle(icerik);
-    return hakaretListesi.some(h => temizMetin.includes(temizle(h)));
+    return tamEslesme(icerik, hakaretListesi);
 }
 
 async function handleKufur(message, tur) {
     const member = message.member;
     if (!member) return;
+
     if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
     if (member.roles.cache.has(SUPPORT_ROLE)) return;
 
-    try { await message.delete(); } catch {}
+    try {
+        await message.delete();
+    } catch {}
 
-    let sureSaniye = 0, mesaj = "";
-    if (tur === "kufur") { 
-        sureSaniye = 10800; 
-        mesaj = `🤬 ${message.author} küfür ettiği için **3 saat** zaman aşımı aldı!`; 
-    } else { 
-        sureSaniye = 3600; 
-        mesaj = `⚠️ ${message.author} hakaret ettiği için **1 saat** zaman aşımı aldı!`; 
+    let sureSaniye = 0;
+    let mesaj = "";
+
+    if (tur === "kufur") {
+        sureSaniye = 10800;
+        mesaj = `🤬 ${message.author} küfür ettiği için **3 saat** zaman aşımı aldı!`;
+    } else {
+        sureSaniye = 3600;
+        mesaj = `⚠️ ${message.author} hakaret ettiği için **1 saat** zaman aşımı aldı!`;
     }
 
     try {
         await member.timeout(sureSaniye * 1000, `Otomatik: ${tur}`);
-        db.prepare("INSERT INTO mod_logs (user_id, islem, sebep, sure, yetkili_id, tarih) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(message.author.id, "Mute", `Otomatik: ${tur}`, `${sureSaniye} saniye`, "bot", Date.now());
-        
+
+        db.prepare(`
+            INSERT INTO mod_logs
+            (user_id, islem, sebep, sure, yetkili_id, tarih)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+            message.author.id,
+            "Mute",
+            `Otomatik: ${tur}`,
+            `${sureSaniye} saniye`,
+            "bot",
+            Date.now()
+        );
+
         const uyari = await message.channel.send(mesaj);
         setTimeout(() => uyari.delete().catch(() => {}), 6000);
+
     } catch (e) {
-        console.error("Mute atılırken hata oluştu: ", e);
+        console.error("Mute atılırken hata oluştu:", e);
     }
 }
 /* ================= REKLAM KORUMASI ================= */
