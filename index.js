@@ -206,7 +206,7 @@ const kufurListesi = [
 const hakaretListesi = [
     "defol", "git burdan", "lanet", "kahrolsun", "gebep", "kahret",
     "rezalet", "utanmaz", "yüzsüz", "arsız", "gerizekalı", "geri zekalı",
-    "mal", "yavşak", "dangalak", "pislik", "serseri", "hergele"
+    "yavşak", "dangalak", "pislik", "serseri", "hergele"
 ];
 
 function temizle(metin) {
@@ -615,7 +615,6 @@ if (hakaretKontrol(message.content)) {
             liste.push(`👤 **${isim}**\n> 💰 ${toplamCoin.toLocaleString()} coin | ⭐ Lv.${lvl.level} | 🦁 ${hayvanSayisi} hayvan | 💬 ${chat.words.toLocaleString()} kelime`);
         }
 
-        // 4000 karakter sınırı için parçalara böl
         const chunks = [];
         let current = "";
         for (const satir of liste) {
@@ -937,7 +936,9 @@ if (hakaretKontrol(message.content)) {
         if (!hedef) return message.reply("❌ Kullanım: `!mute @kullanıcı [süre] [sebep]`");
         if (hedef.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply("❌ Yöneticileri susturamazsın.");
         const surStr = args[2] && /^\d+(m|h|d)$/i.test(args[2]) ? args[2] : null;
-        const sureMs = surStr ? parseSure(surStr) : null;
+        let sureMs = surStr ? parseSure(surStr) : null;
+        const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // Discord'un timeout üst limiti 28 gündür
+        if (sureMs && sureMs > MAX_TIMEOUT_MS) sureMs = MAX_TIMEOUT_MS;
         const sebep  = (surStr ? args.slice(3) : args.slice(2)).join(" ") || "Sebep belirtilmedi";
         try {
             await hedef.timeout(sureMs || (28*24*60*60*1000), sebep);
@@ -946,7 +947,7 @@ if (hakaretKontrol(message.content)) {
                 .addFields({ name: "Kullanıcı", value: `${hedef}`, inline: true }, { name: "Yetkili", value: `${message.author}`, inline: true }, { name: "Süre", value: sureMesvaji(sureMs), inline: true }, { name: "Sebep", value: sebep })
                 .setColor(0xFFA500).setTimestamp();
             return message.channel.send({ embeds: [embed] });
-        } catch { return message.reply("❌ Susturulamadı."); }
+        } catch (e) { console.error("Mute hatası:", e); return message.reply("❌ Susturulamadı."); }
     }
 
     if (cmd === "!unmute") {
@@ -1210,4 +1211,6 @@ async function youtubeKontrol() {
 }
 
 /* ================= LOGIN ================= */
-client.login(TOKEN);
+client.login(TOKEN).catch(err => {
+    console.error("LOGIN HATASI:", err);
+});
