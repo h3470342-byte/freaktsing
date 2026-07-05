@@ -1,5 +1,15 @@
 require("dotenv").config();
 
+/* ================= GÜVENLİK AĞI ================= */
+/* Yakalanmayan hatalar Node.js'te process'i tamamen çökertebilir.
+   Bu iki listener, botun beklenmedik bir hata karşısında ölmesini engeller. */
+process.on("unhandledRejection", (reason) => {
+    console.error("Yakalanmamış Promise Hatası:", reason);
+});
+process.on("uncaughtException", (err) => {
+    console.error("Yakalanmamış Hata:", err);
+});
+
 const express = require("express");
 const app = express();
 
@@ -325,7 +335,7 @@ client.on("guildMemberAdd", async (member) => {
         const role = member.guild.roles.cache.get(AUTO_ROLE);
         if (role) await member.roles.add(role);
         const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-        if (ch) ch.send(`🎉 Sunucumuza hoş geldin ${member}! Kuralları okumayı unutma ❤️`);
+        if (ch) await ch.send(`🎉 Sunucumuza hoş geldin ${member}! Kuralları okumayı unutma ❤️`);
     } catch (e) { console.error("guildMemberAdd hatası:", e); }
 });
 
