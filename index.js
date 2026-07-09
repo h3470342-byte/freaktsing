@@ -917,9 +917,26 @@ if (hakaretKontrol(message.content)) {
 
     if (cmd === "!addcoins") {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+
+        if (args[1] && args[1].toLowerCase() === "all") {
+            const amount = parseInt(args[2]);
+            if (isNaN(amount) || amount <= 0) return message.reply("❌ Kullanım: `!addcoins all <miktar>`");
+            const bekleMesaj = await message.reply("⏳ Herkese coin ekleniyor, bu biraz sürebilir...");
+            await message.guild.members.fetch();
+            const uyeler = message.guild.members.cache.filter(m => !m.user.bot);
+            const insertMany = db.transaction((idler) => {
+                for (const id of idler) {
+                    getUser(id);
+                    db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(amount, id);
+                }
+            });
+            insertMany(uyeler.map(m => m.id));
+            return bekleMesaj.edit(`✅ **${uyeler.size}** kullanıcıya (bot hariç) **${amount.toLocaleString()} coin** eklendi.`);
+        }
+
         const user = message.mentions.users.first();
         const amount = parseInt(args[2]);
-        if (!user || isNaN(amount)) return message.reply("❌ Kullanım: `!addcoins @user miktar`");
+        if (!user || isNaN(amount)) return message.reply("❌ Kullanım: `!addcoins @user miktar` veya `!addcoins all miktar`");
         getUser(user.id);
         db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(amount, user.id);
         return message.reply(`✅ ${user.username} kullanıcısına ${amount} coin eklendi.`);
