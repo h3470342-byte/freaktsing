@@ -421,6 +421,22 @@ if (hakaretKontrol(message.content)) {
     if (cmd === "!coin") return message.reply(Math.random() < 0.5 ? "🪙 Yazı" : "🪙 Tura");
     if (cmd === "!yt" || cmd === "!youtube") return message.reply("Youtube = @freaktsingmc");
 
+    if (cmd === "!help") {
+        const embed = new EmbedBuilder()
+            .setTitle("👋 Yardıma mı ihtiyacın var?")
+            .setDescription(`Bir sorunmu yaşıyorsunuz? Sorun yaşıyosanız <#1516221278925619340> kanalından destek açabilirsiniz.`)
+            .setColor(0x5865F2).setFooter({ text: "Freaktsing • Yardım" }).setTimestamp();
+        return message.channel.send({ embeds: [embed] });
+    }
+
+    if (cmd === "!komut" || cmd === "!komutlar") {
+        const embed = new EmbedBuilder()
+            .setTitle("📖 Komutlar")
+            .setDescription(`Bot hakkındaki komutları öğrenmek için <#1516865398144761978> kanalından komutlara erişebilirsiniz.`)
+            .setColor(0x5865F2).setFooter({ text: "Freaktsing • Komutlar" }).setTimestamp();
+        return message.channel.send({ embeds: [embed] });
+    }
+
     /* ---------- ECONOMY ---------- */
     if (cmd === "!balance" || cmd === "!bal") {
         const user = getUser(uid);
@@ -1056,11 +1072,24 @@ if (hakaretKontrol(message.content)) {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply("❌ Sadece adminler.");
         const embed = new EmbedBuilder()
             .setTitle("🎫 Freaktsing Destek Merkezi")
-            .setDescription(">>> Destek ekibimize ulaşmak için uygun kategoriyi seç.\n\n📌 **Genel Destek** — Herhangi bir konuda yardım\n🎥 **Video Katılım** — Videolarımıza katılmak isteyenler\n⚙️ **Teknik Destek** — Teknik sorunlar\n⚖️ **Oyuncu İtirazı** — Verilen cezalara itiraz")
-            .setColor(0x5865F2).setFooter({ text: "Freaktsing • Destek Sistemi" }).setTimestamp();
+            .setDescription(
+                "Sunucumuzda bir sorunla mı karşılaştın, bir konuda yardıma mı ihtiyacın var? " +
+                "Aşağıdaki kategorilerden sana en uygun olanı seçerek özel bir destek kanalı açabilirsin. " +
+                "Ekibimiz en kısa sürede seninle ilgilenecek.\n\u200b"
+            )
+            .addFields(
+                { name: "📌 Genel Destek", value: "Herhangi bir konuda yardım almak istiyorsan.", inline: false },
+                { name: "🎥 Video Katılım Sorunu", value: "Videolarımıza katılırken bir sorunla karşılaştıysan.", inline: false },
+                { name: "⚙️ Teknik Destek", value: "Sunucu veya bot ile ilgili teknik bir sorun yaşıyorsan.", inline: false },
+                { name: "⚖️ Oyuncu İtirazı", value: "Sana verilen bir cezaya itiraz etmek istiyorsan.", inline: false }
+            )
+            .setThumbnail(message.guild.iconURL({ dynamic: true }))
+            .setColor(0x5865F2)
+            .setFooter({ text: "Freaktsing • Destek Sistemi", iconURL: message.guild.iconURL({ dynamic: true }) })
+            .setTimestamp();
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("ticket_genel").setLabel("Genel Destek").setEmoji("📌").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId("ticket_video").setLabel("Video Katılım").setEmoji("🎥").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("ticket_video").setLabel("Video Katılım Sorunu").setEmoji("🎥").setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId("ticket_teknik").setLabel("Teknik Destek").setEmoji("⚙️").setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId("ticket_itiraz").setLabel("Oyuncu İtirazı").setEmoji("⚖️").setStyle(ButtonStyle.Secondary)
         );
@@ -1140,11 +1169,11 @@ client.on("interactionCreate", async (interaction) => {
         ticketCooldown.add(interaction.user.id);
         setTimeout(() => ticketCooldown.delete(interaction.user.id), 5000);
         const id = getNextTicketId();
-        const titles = { genel: "📌 Genel Destek", video: "🎥 Video Katılım", teknik: "⚙️ Teknik Destek", itiraz: "⚖️ Oyuncu İtirazı" };
+        const titles = { genel: "📌 Genel Destek", video: "🎥 Video Katılım Sorunu", teknik: "⚙️ Teknik Destek", itiraz: "⚖️ Oyuncu İtirazı" };
         const colors = { genel: 0x5865F2, video: 0xFF0000, teknik: 0xFFA500, itiraz: 0xFF4444 };
         const forms = {
             genel:  "```\n1. Adınız:\n2. Konu:\n3. Açıklama:\n4. Daha önce destek aldınız mı?\n```",
-            video:  "```\n1. Ad Soyad:\n2. Nickname:\n3. Yaş:\n4. Oyun:\n5. Rank:\n6. İçerik türü:\n7. Sosyal medya:\n```",
+            video:  "```\n1. Ad Soyad / Nickname:\n2. Katılmaya çalıştığınız video/yayın:\n3. Yaşadığınız sorun:\n4. Sorun ne zaman başladı:\n5. Hata mesajı / ekran görüntüsü var mı:\n6. Daha önce bu videoya katıldınız mı:\n```",
             teknik: "```\n1. Adınız:\n2. Sorun:\n3. Ne zaman başladı?\n4. Hata mesajı:\n5. Platform:\n```",
             itiraz: "```\n1. Adınız:\n2. Ceza türü:\n3. Cezayı veren:\n4. Tarih:\n5. İtiraz sebebi:\n6. Kanıt:\n```"
         };
