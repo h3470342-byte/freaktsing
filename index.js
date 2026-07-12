@@ -298,7 +298,7 @@ async function handleKufur(message, tur) {
 /* ================= REKLAM KORUMASI ================= */
 
 const reklamRegex =
-/(discord\.gg\/|discord\.com\/invite\/|youtube\.com\/|youtu\.be\/|instagram\.com\/|tiktok\.com\/|twitch\.tv\/|kick\.com\/|facebook\.com\/|x\.com\/|twitter\.com\/|https?:\/\/|www\.)/i;
+/(?:discord\.gg\/|discord\.com\/invite\/|(?:www\.)?youtube\.com\/|youtu\.be\/|(?:www\.)?instagram\.com\/|(?:www\.)?tiktok\.com\/|(?:www\.)?facebook\.com\/|(?:www\.)?x\.com\/|(?:www\.)?twitter\.com\/|(?:www\.)?twitch\.tv\/|(?:www\.)?kick\.com\/)/i;
 
 async function handleReklam(message) {
     const member = message.member;
