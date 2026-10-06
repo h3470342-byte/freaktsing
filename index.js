@@ -1235,7 +1235,7 @@ async function cekilisiBitir(cekilisId, cekilis, kanal) {
 
 const SES_KATEGORI_ID = process.env.SES_KATEGORI_ID || null;
 
-// Kullanıcı -> oluşturduğu geçici ses kanalı
+// Kullanıcı ID -> geçici ses kanalı ID
 const geciciSesKanallari = new Map();
 
 
@@ -1246,7 +1246,7 @@ client.on("messageCreate", async (message) => {
 
     if (message.content.trim().toLowerCase() !== "!sespanel") return;
 
-    // Sadece Administrator kullanabilir
+    // Sadece Administrator
     if (!message.member?.permissions.has(
         PermissionsBitField.Flags.Administrator
     )) {
@@ -1282,9 +1282,8 @@ client.on("messageCreate", async (message) => {
             embeds: [embed],
             components: [row]
         });
-
     } catch (error) {
-        console.error("Ses paneli gönderme hatası:", error);
+        console.error("❌ Ses paneli hatası:", error);
     }
 });
 
@@ -1294,7 +1293,6 @@ client.on("messageCreate", async (message) => {
 client.on("interactionCreate", async (interaction) => {
 
     if (!interaction.isButton()) return;
-
     if (interaction.customId !== "ses_olustur") return;
 
     const guild = interaction.guild;
@@ -1308,7 +1306,7 @@ client.on("interactionCreate", async (interaction) => {
 
     const userId = interaction.user.id;
 
-    // Kullanıcının daha önce oluşturduğu kanal
+    // Kullanıcının mevcut kanalı var mı?
     const mevcutKanalId = geciciSesKanallari.get(userId);
 
     if (mevcutKanalId) {
@@ -1324,7 +1322,7 @@ client.on("interactionCreate", async (interaction) => {
             });
         }
 
-        // Kanal silinmişse kaydı temizle
+        // Kanal yoksa eski kaydı temizle
         geciciSesKanallari.delete(userId);
     }
 
@@ -1338,7 +1336,6 @@ client.on("interactionCreate", async (interaction) => {
             name: `🔊 ${interaction.user.username}`,
             type: ChannelType.GuildVoice,
 
-            // Herkes girebilir
             permissionOverwrites: [
                 {
                     id: guild.roles.everyone.id,
@@ -1350,20 +1347,61 @@ client.on("interactionCreate", async (interaction) => {
             ]
         };
 
-        // .env'de kategori varsa o kategoriye oluştur
+        // Kategori varsa kategori içine oluştur
         if (SES_KATEGORI_ID) {
             kanalAyarlari.parent = SES_KATEGORI_ID;
         }
 
+        // Kanalı oluştur
         const sesKanali = await guild.channels.create(
             kanalAyarlari
         );
 
-        // Kullanıcının kanalını kaydet
+        // Kullanıcı -> kanal kaydı
         geciciSesKanallari.set(
             userId,
             sesKanali.id
         );
+
+
+        /* ================= KANALI EN ALTA TAŞI ================= */
+
+        try {
+
+            // Sunucudaki tüm kanalları al
+            const kanallar = await guild.channels.fetch();
+
+            // Sadece ses kanallarını bul
+            const sesKanallari = [...kanallar.values()]
+                .filter(channel =>
+                    channel &&
+                    channel.type === ChannelType.GuildVoice
+                )
+                .filter(channel =>
+                    channel.id !== sesKanali.id
+                );
+
+            // En yüksek pozisyonu bul
+            const enYuksekPozisyon = sesKanallari.length > 0
+                ? Math.max(
+                    ...sesKanallari.map(channel => channel.rawPosition)
+                )
+                : 0;
+
+            // Yeni kanalı en alta gönder
+            await sesKanali.setPosition(
+                enYuksekPozisyon + 1
+            );
+
+        } catch (positionError) {
+            console.error(
+                "⚠️ Kanal pozisyonu ayarlanamadı:",
+                positionError
+            );
+        }
+
+
+        /* ================= CEVAP ================= */
 
         await interaction.editReply({
             content:
@@ -1391,50 +1429,52 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 
-/* ================= SES KANALI OTOMATİK SİLME ================= */
+/* ================= BOŞ SES KANALINI SİL ================= */
 
-client.on("voiceStateUpdate", async (oldState, newState) => {
+async function bosSesKanaliniKontrolEt(channel) {
 
-    // Kullanıcı bir kanaldan çıkmadıysa işlem yapma
-    if (!oldState.channelId) return;
+    if (!channel) return;
 
-    const kanalId = oldState.channelId;
-
-    // Kanalın bizim geçici kanallarımızdan biri olup olmadığını bul
+    // Bu kanal bizim geçici kanallarımızdan biri mi?
     let kanalSahibi = null;
 
     for (const [
         userId,
-        geciciKanalId
+        kanalId
     ] of geciciSesKanallari.entries()) {
 
-        if (geciciKanalId === kanalId) {
+        if (kanalId === channel.id) {
             kanalSahibi = userId;
             break;
         }
     }
 
-    // Bizim oluşturduğumuz kanal değil
+    // Geçici kanal değil
     if (!kanalSahibi) return;
-
-    const kanal = oldState.guild.channels.cache.get(
-        kanalId
-    );
-
-    if (!kanal) {
-        geciciSesKanallari.delete(
-            kanalSahibi
-        );
-        return;
-    }
 
     try {
 
-        // Kanalda hiç kimse yoksa sil
-        if (kanal.members.size === 0) {
+        // Kanalı Discord'dan tekrar al
+        const guncelKanal =
+            await channel.guild.channels
+                .fetch(channel.id)
+                .catch(() => null);
 
-            await kanal.delete(
-                "Geçici ses kanalı boş kaldı."
+        if (!guncelKanal) {
+            geciciSesKanallari.delete(
+                kanalSahibi
+            );
+            return;
+        }
+
+        // Kanalda kimse yoksa sil
+        if (
+            guncelKanal.type === ChannelType.GuildVoice &&
+            guncelKanal.members.size === 0
+        ) {
+
+            await guncelKanal.delete(
+                "Geçici ses kanalı boş kaldığı için otomatik silindi."
             );
 
             geciciSesKanallari.delete(
@@ -1442,24 +1482,49 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
             );
 
             console.log(
-                `🗑️ Geçici ses kanalı silindi: ${kanal.name}`
+                `🗑️ Geçici ses kanalı silindi: ${guncelKanal.name}`
             );
         }
 
     } catch (error) {
 
         console.error(
-            "❌ Ses kanalı silme hatası:",
+            "❌ Boş ses kanalı kontrol hatası:",
             error
         );
 
-        // Kanal zaten silinmişse kaydı temizle
-        if (error.code === 10003) {
+        // Kanal zaten silinmiş
+        if (
+            error.code === 10003 ||
+            error.code === 10011
+        ) {
             geciciSesKanallari.delete(
                 kanalSahibi
             );
         }
     }
+}
+
+
+/* ================= SES DURUMU DEĞİŞİNCE ================= */
+
+client.on("voiceStateUpdate", async (oldState, newState) => {
+
+    // Eski kanaldan çıkıldıysa kontrol et
+    if (oldState.channel) {
+
+        const eskiKanal = oldState.channel;
+
+        // Biraz bekle ki Discord üyelik durumunu güncellesin
+        setTimeout(async () => {
+            await bosSesKanaliniKontrolEt(
+                eskiKanal
+            );
+        }, 1000);
+    }
+
+    // Kullanıcı başka kanala geçtiyse
+    // eski kanal zaten yukarıda kontrol edildi.
 });
 
 /* ================= YOUTUBE ================= */
