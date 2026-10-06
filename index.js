@@ -1231,6 +1231,211 @@ async function cekilisiBitir(cekilisId, cekilis, kanal) {
     if (ch) await ch.send({ content: `🎊 Tebrikler ${mentions}! **${cekilis.odul}** ödülünü kazandın!` });
 }
 
+/* ================= GEÇİCİ SES KANALI SİSTEMİ ================= */
+
+const SES_KATEGORI_ID = process.env.SES_KATEGORI_ID || null;
+
+// Kullanıcıların oluşturduğu geçici ses kanallarını tutar
+const geciciSesKanallari = new Map();
+
+/*
+    !sespanel
+
+    Sadece Administrator yetkisine sahip kişiler kullanabilir.
+    Paneli göndermek için:
+    !sespanel
+*/
+
+client.on("messageCreate", async (message) => {
+    if (message.author.bot) return;
+
+    if (message.content.toLowerCase() !== "!sespanel") return;
+
+    // Sadece adminler kullanabilir
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return message.reply("❌ Bu komutu sadece yöneticiler kullanabilir.");
+    }
+
+    const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle("🔊 Ses Kanalı Oluştur")
+        .setDescription(
+            "Aşağıdaki butona basarak kendine özel geçici bir ses kanalı oluşturabilirsin.\n\n" +
+            "🔊 **Ses Oluştur +** butonuna bastığında kanalın oluşturulur.\n" +
+            "• Her kullanıcı yalnızca **1 kanal** oluşturabilir.\n" +
+            "• Kanal boş kaldığında **otomatik olarak silinir**."
+        )
+        .setFooter({
+            text: "Freaktsing • Ses Sistemi"
+        })
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId("ses_olustur")
+            .setLabel("Ses Oluştur +")
+            .setEmoji("🔊")
+            .setStyle(ButtonStyle.Primary)
+    );
+
+    await message.channel.send({
+        embeds: [embed],
+        components: [row]
+    });
+});
+
+
+/* ================= SES PANEL BUTONU ================= */
+
+client.on("interactionCreate", async (interaction) => {
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId !== "ses_olustur") return;
+
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    const userId = interaction.user.id;
+
+    // Kullanıcının zaten oluşturduğu kanal var mı?
+    const mevcutKanalId = geciciSesKanallari.get(userId);
+
+    if (mevcutKanalId) {
+        const mevcutKanal = guild.channels.cache.get(mevcutKanalId);
+
+        // Kanal hâlâ varsa tekrar oluşturmasını engelle
+        if (mevcutKanal) {
+            return interaction.reply({
+                content: `❌ Zaten sana ait bir ses kanalı var: ${mevcutKanal}`,
+                ephemeral: true
+            });
+        }
+
+        // Kanal bulunamıyorsa kaydı temizle
+        geciciSesKanallari.delete(userId);
+    }
+
+    await interaction.deferReply({
+        ephemeral: true
+    });
+
+    try {
+        /*
+            Kanalı ses kanallarının en altına oluşturuyoruz.
+
+            Eğer SES_KATEGORI_ID .env'de verilirse,
+            kanal o kategorinin içine oluşturulur.
+        */
+
+        const kanalAyarlari = {
+            name: `🔊 ${interaction.user.username}`,
+            type: ChannelType.GuildVoice,
+
+            reason: `${interaction.user.username} tarafından geçici ses kanalı oluşturuldu.`,
+
+            userLimit: 0,
+
+            permissionOverwrites: [
+                {
+                    id: guild.roles.everyone.id,
+                    allow: [
+                        PermissionFlagsBits.Connect,
+                        PermissionFlagsBits.ViewChannel
+                    ]
+                }
+            ]
+        };
+
+        // .env'de kategori varsa kategoriye ekle
+        if (SES_KATEGORI_ID) {
+            kanalAyarlari.parent = SES_KATEGORI_ID;
+        }
+
+        const sesKanali = await guild.channels.create(kanalAyarlari);
+
+        // Kullanıcının kanalını kaydet
+        geciciSesKanallari.set(userId, sesKanali.id);
+
+        await interaction.editReply({
+            content: `✅ Ses kanalın oluşturuldu: ${sesKanali}\n\n🔊 Kanala girerek kullanabilirsin.`
+        });
+
+        console.log(
+            `Geçici ses kanalı oluşturuldu: ${sesKanali.name} | Kullanıcı: ${interaction.user.tag}`
+        );
+
+    } catch (error) {
+        console.error("Ses kanalı oluşturma hatası:", error);
+
+        await interaction.editReply({
+            content: "❌ Ses kanalı oluşturulurken bir hata oluştu."
+        });
+    }
+});
+
+
+/* ================= SES KANALI OTOMATİK SİLME ================= */
+
+client.on("voiceStateUpdate", async (oldState, newState) => {
+
+    // Kullanıcı eski kanaldan çıktıysa kontrol et
+    if (!oldState.channelId) return;
+
+    const kanalId = oldState.channelId;
+
+    // Bu kanal bizim oluşturduğumuz geçici kanallardan biri mi?
+    let kanalSahibi = null;
+
+    for (const [userId, geciciKanalId] of geciciSesKanallari.entries()) {
+        if (geciciKanalId === kanalId) {
+            kanalSahibi = userId;
+            break;
+        }
+    }
+
+    // Bizim kanalımız değilse hiçbir şey yapma
+    if (!kanalSahibi) return;
+
+    const kanal = oldState.guild.channels.cache.get(kanalId);
+
+    if (!kanal) {
+        geciciSesKanallari.delete(kanalSahibi);
+        return;
+    }
+
+    /*
+        Kanalda hiç kimse kalmadıysa sil.
+        fetch() kullanıyoruz ki cache'de olmayan üyeler de
+        doğru şekilde kontrol edilsin.
+    */
+
+    try {
+        const uyeler = kanal.members;
+
+        if (uyeler.size === 0) {
+
+            await kanal.delete(
+                "Geçici ses kanalı boş kaldığı için otomatik silindi."
+            );
+
+            geciciSesKanallari.delete(kanalSahibi);
+
+            console.log(
+                `Geçici ses kanalı silindi: ${kanal.name}`
+            );
+        }
+
+    } catch (error) {
+        console.error("Geçici ses kanalı silme hatası:", error);
+
+        // Kanal zaten silinmişse kaydı temizle
+        if (error.code === 10003) {
+            geciciSesKanallari.delete(kanalSahibi);
+        }
+    }
+});
+
+
 /* ================= YOUTUBE ================= */
 
 const YOUTUBE_API_KEY       = process.env.YOUTUBE_API_KEY;
@@ -1245,28 +1450,61 @@ async function youtubeKontrol() {
         const url = `https://www.googleapis.com/youtube/v3/search?key=${YOUTUBE_API_KEY}&channelId=${YOUTUBE_CHANNEL_ID}&part=snippet&order=date&maxResults=1&type=video`;
         const res  = await fetch(url);
         const data = await res.json();
+
         if (!data.items || data.items.length === 0) return;
+
         const video = data.items[0];
         const videoId = video.id.videoId;
+
         if (!videoId || videoId === sonVideoId) return;
+
         sonVideoId = videoId;
-        db.prepare("UPDATE youtube_state SET last_video_id = ? WHERE id = 1").run(videoId);
+
+        db.prepare(
+            "UPDATE youtube_state SET last_video_id = ? WHERE id = 1"
+        ).run(videoId);
+
         const title = video.snippet.title;
         const thumb = video.snippet.thumbnails.high.url;
         const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
         const isShort = title.toLowerCase().includes("#short");
         const tur = isShort ? "🎬 Yeni Short" : "🎥 Yeni Video";
-        const embed = new EmbedBuilder().setTitle(`${tur}: ${title}`).setURL(videoUrl)
-            .setDescription(`**Freaktsing** yeni bir ${isShort?"Short":"video"} yükledi! 🔥`)
-            .setImage(thumb).setColor(0xFF0000).setFooter({ text: "Freaktsing • YouTube" }).setTimestamp();
-        const kanal = await client.channels.fetch(DISCORD_VIDEO_CHANNEL).catch(() => null);
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${tur}: ${title}`)
+            .setURL(videoUrl)
+            .setDescription(
+                `**Freaktsing** yeni bir ${isShort ? "Short" : "video"} yükledi! 🔥`
+            )
+            .setImage(thumb)
+            .setColor(0xFF0000)
+            .setFooter({
+                text: "Freaktsing • YouTube"
+            })
+            .setTimestamp();
+
+        const kanal = await client.channels
+            .fetch(DISCORD_VIDEO_CHANNEL)
+            .catch(() => null);
+
         if (!kanal) return;
-        await kanal.send({ content: `<@&${VIDEO_PING_ROLE}> ${tur} çıktı!`, embeds: [embed] });
+
+        await kanal.send({
+            content: `<@&${VIDEO_PING_ROLE}> ${tur} çıktı!`,
+            embeds: [embed]
+        });
+
         console.log(`YouTube bildirimi: ${title}`);
-    } catch (e) { console.error("YouTube hatası:", e.message); }
+
+    } catch (e) {
+        console.error("YouTube hatası:", e.message);
+    }
 }
 
+
 /* ================= LOGIN ================= */
+
 client.login(TOKEN).catch(err => {
     console.error("LOGIN HATASI:", err);
 });
