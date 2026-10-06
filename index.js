@@ -32,11 +32,14 @@ const {
 const Database = require("better-sqlite3");
 const db = new Database("bot.db");
 
+/* ================= CLIENT (TEK TANIM) ================= */
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates
     ]
 });
@@ -133,15 +136,6 @@ function hasSansArtirici(userId) {
 }
 
 /* ================= CONFIG ================= */
-
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ]
-});
 
 const TOKEN              = process.env.TOKEN;
 const SUPPORT_ROLE       = "1516389895457996850";
@@ -1215,7 +1209,7 @@ client.on("interactionCreate", async (interaction) => {
             const embed = new EmbedBuilder().setTitle(`${titles[type]} — #${id}`)
                 .setDescription(`👤 **Ticket sahibi:** ${interaction.user}\n🕐 **Açılış:** <t:${Math.floor(Date.now()/1000)}:F>\n\n${forms[type]}\n\n> Ticketı kapatmak için \`!kapat\` yazın.`)
                 .setColor(colors[type]).setFooter({ text: "Freaktsing Destek Sistemi" }).setTimestamp();
-                     await channel.send({ content: `${interaction.user} <@&${SUPPORT_ROLE}>`, embeds: [embed] });
+            await channel.send({ content: `${interaction.user} <@&${SUPPORT_ROLE}>`, embeds: [embed] });
             return interaction.reply({ content: `✅ Ticket açıldı: ${channel}`, ephemeral: true });
         } catch (e) { console.error(e); return interaction.reply({ content: "❌ Hata oluştu.", ephemeral: true }); }
     }
@@ -1241,12 +1235,6 @@ async function cekilisiBitir(cekilisId, cekilis, kanal) {
 }
 
 /* ================= GEÇİCİ SES KANALI SİSTEMİ ================= */
-
-// ÖNEMLİ: Client oluştururken intents içinde şunlar olmalı:
-// GatewayIntentBits.Guilds,
-// GatewayIntentBits.GuildMessages,
-// GatewayIntentBits.MessageContent,
-// GatewayIntentBits.GuildVoiceStates   <-- ses sistemi için şart
 
 const SES_KATEGORI_ID = process.env.SES_KATEGORI_ID || null;
 
