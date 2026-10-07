@@ -12,6 +12,8 @@ process.on("uncaughtException", (err) => {
 
 const express = require("express");
 const app = express();
+app.use(express.json({ limit: "2kb" }));
+const crypto = require("crypto");
 
 app.get("/", (req, res) => res.send("Bot aktif"));
 app.listen(process.env.PORT || 3000, "0.0.0.0", () => {
@@ -143,6 +145,21 @@ const AUTO_ROLE          = "1516220513595162744";
 const WELCOME_CHANNEL_ID = "1516790940440985681";
 const VIP_ROLE           = "1517592377106104371";
 const VIP_PLUS_ROLE      = "1517595427577266316";
+
+const ofkeliCevaplar = [
+    "Gene Ne var ! Oyunun ortasındayım 😡",
+    "Ne istiyorsun be, görmüyor musun meşgulüm! 😤",
+    "Tam clutch atacaktım, şimdi bozuldu! Teşekkürler çok sağ ol 😡",
+    "Etiketleyip durma artık, sinirlerim tepemde! 😠",
+    "Ne var, ne var, NE VAR?! 😡",
+    "Konuşma şimdi, rakip takım tam önümde! 🎮😤",
+    "Her seferinde en kritik anda çağırıyorsun, bilerek yapıyorsun değil mi? 😡",
+    "Evet?! Hızlı söyle, ölüyorum burada! 💢",
+    "Bir daha etiketlersen mouse'u fırlatırım! 😤",
+    "Bir dakika rahat yok be! Ne istiyorsun? 😒",
+    "Gene mi sen?! Oyundayım dedim ya! 😠",
+    "Lag yüzünden zaten sinirliyim, bir de sen çıktın başıma! 🤬"
+];
 
 function getVipLevel(member) {
     if (member.roles.cache.has(VIP_PLUS_ROLE)) return 2;
@@ -416,6 +433,35 @@ if (hakaretKontrol(message.content)) {
             const turNotu = dongu > 0 ? ` *(${dongu + 1}. tur)*` : "";
             message.channel.send(`🏆 Tebrikler ${message.author}, **${reward.words.toLocaleString()}** kelimeye ulaştın!${turNotu} **+${gercekOdul.toLocaleString()} coin**${boostNotu}`);
         }
+    }
+
+    /* ---------- BOT ETİKETLENİNCE (SİNİRLİ) ---------- */
+    if (
+        !cmd.startsWith("!") &&
+        (message.content.includes(`<@${client.user.id}>`) || message.content.includes(`<@!${client.user.id}>`))
+    ) {
+        if (hasCooldown(uid, "etiket", 3000)) return;
+        return message.reply(ofkeliCevaplar[Math.floor(Math.random() * ofkeliCevaplar.length)]);
+    }
+
+    /* ---------- PİKSEL TUVALİ ---------- */
+    if (cmd === "!piksel") {
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle("🎨 Piksel Tuvali")
+            .setDescription(
+                "Herkesin aynı tuvale piksel koyduğu dev bir **10000x10000** çizim alanı!\n\n" +
+                "• Her **2 saniyede** 1 piksel koyabilirsin.\n" +
+                "• İstediğin rengi seçebilirsin.\n" +
+                "• Yakınlaştırıp uzaklaşabilir, kaydırabilirsin.\n\n" +
+                "Aşağıdaki butona basınca sana özel link gelecek."
+            )
+            .setFooter({ text: "Freaktsing • Piksel Etkinliği" })
+            .setTimestamp();
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("piksel_ac").setLabel("Tuvali Aç").setEmoji("🎨").setStyle(ButtonStyle.Primary)
+        );
+        return message.channel.send({ embeds: [embed], components: [row] });
     }
 
     /* ---------- FUN ---------- */
@@ -1496,6 +1542,373 @@ client.on("voiceStateUpdate", (oldState, newState) => {
         bosSesKanaliniKontrolEt(eskiKanal);
     }, 1000);
 });
+
+/* ================= PİKSEL TUVALİ (r/place tarzı) ================= */
+
+const PIKSEL_BOYUT   = 10000;   // 10000 x 10000
+const PIKSEL_BEKLEME = 2000;    // normal kullanıcı için ms (yöneticilerde yok)
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS pixels (
+        x INTEGER NOT NULL,
+        y INTEGER NOT NULL,
+        color TEXT NOT NULL,
+        user_id TEXT,
+        ts INTEGER,
+        PRIMARY KEY (x, y)
+    ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS pixel_users (
+        user_id TEXT PRIMARY KEY,
+        token TEXT UNIQUE NOT NULL,
+        guild_id TEXT
+    );
+`);
+
+const pikselSon        = new Map(); // kullanıcı -> son piksel zamanı
+const pikselUyeCache   = new Map(); // kullanıcı -> { uye, admin, until }
+
+function pikselKullanici(token) {
+    if (!token || typeof token !== "string" || token.length > 64) return null;
+    return db.prepare("SELECT * FROM pixel_users WHERE token = ?").get(token) || null;
+}
+
+async function pikselUyeDurum(row) {
+    const c = pikselUyeCache.get(row.user_id);
+    if (c && c.until > Date.now()) return c;
+
+    let uye = false, admin = false;
+    try {
+        const guild = client.guilds.cache.get(row.guild_id);
+        if (guild) {
+            const m = await guild.members.fetch(row.user_id);
+            uye = true;
+            admin = m.permissions.has(PermissionsBitField.Flags.Administrator);
+        }
+    } catch {}
+
+    const sonuc = { uye, admin, until: Date.now() + 60000 };
+    pikselUyeCache.set(row.user_id, sonuc);
+    return sonuc;
+}
+
+/* ---------- API ---------- */
+
+app.get("/api/piksel/ben", async (req, res) => {
+    const row = pikselKullanici(req.query.t);
+    if (!row) return res.status(401).json({ ok: false });
+    const durum = await pikselUyeDurum(row);
+    if (!durum.uye) return res.status(403).json({ ok: false });
+    const u = await client.users.fetch(row.user_id).catch(() => null);
+    res.json({ ok: true, ad: u ? u.username : "Kullanıcı", yonetici: durum.admin, bekle: PIKSEL_BEKLEME });
+});
+
+app.get("/api/piksel/view", (req, res) => {
+    const x    = Math.max(0, Math.min(PIKSEL_BOYUT - 1, parseInt(req.query.x) || 0));
+    const y    = Math.max(0, Math.min(PIKSEL_BOYUT - 1, parseInt(req.query.y) || 0));
+    const w    = Math.max(1, Math.min(PIKSEL_BOYUT, parseInt(req.query.w) || 1));
+    const h    = Math.max(1, Math.min(PIKSEL_BOYUT, parseInt(req.query.h) || 1));
+    const step = Math.max(1, Math.min(400, parseInt(req.query.step) || 1));
+
+    const rows = db.prepare(`
+        SELECT CAST(x / ? AS INTEGER) * ? AS gx,
+               CAST(y / ? AS INTEGER) * ? AS gy,
+               color
+        FROM pixels
+        WHERE x >= ? AND x < ? AND y >= ? AND y < ?
+        GROUP BY gx, gy
+        LIMIT 150000
+    `).all(step, step, step, step, x, x + w, y, y + h);
+
+    res.json({ step, p: rows.map(r => [r.gx, r.gy, r.color]) });
+});
+
+app.post("/api/piksel/koy", async (req, res) => {
+    const { t, x, y, color } = req.body || {};
+
+    const row = pikselKullanici(t);
+    if (!row) return res.status(401).json({ hata: "Giriş yok. Discord'da !piksel yazıp butona bas." });
+
+    const px = Number(x), py = Number(y);
+    if (!Number.isInteger(px) || !Number.isInteger(py) || px < 0 || py < 0 || px >= PIKSEL_BOYUT || py >= PIKSEL_BOYUT)
+        return res.status(400).json({ hata: "Geçersiz konum." });
+
+    if (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color))
+        return res.status(400).json({ hata: "Geçersiz renk." });
+
+    const durum = await pikselUyeDurum(row);
+    if (!durum.uye) return res.status(403).json({ hata: "Sunucuda olman gerekiyor." });
+
+    if (!durum.admin) {
+        const gecen = Date.now() - (pikselSon.get(row.user_id) || 0);
+        if (gecen < PIKSEL_BEKLEME) {
+            return res.status(429).json({ hata: "Biraz bekle!", bekle: PIKSEL_BEKLEME - gecen });
+        }
+        pikselSon.set(row.user_id, Date.now());
+    }
+
+    db.prepare("INSERT OR REPLACE INTO pixels (x, y, color, user_id, ts) VALUES (?, ?, ?, ?, ?)")
+        .run(px, py, color.toLowerCase(), row.user_id, Date.now());
+
+    res.json({ ok: true, bekle: durum.admin ? 0 : PIKSEL_BEKLEME });
+});
+
+app.get("/piksel", (req, res) => {
+    res.type("html").send(PIKSEL_SAYFA);
+});
+
+/* ---------- !piksel BUTONU ---------- */
+
+client.on("interactionCreate", async (interaction) => {
+    if (!interaction.isButton()) return;
+    if (interaction.customId !== "piksel_ac") return;
+
+    if (!interaction.guildId) {
+        return interaction.reply({ content: "❌ Bu buton sadece sunucuda kullanılabilir.", ephemeral: true });
+    }
+
+    const base = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+    if (!base) {
+        return interaction.reply({
+            content: "❌ Sitenin adresi ayarlı değil. Ortam değişkenlerine `PUBLIC_URL` ekle (örn: https://botum.onrender.com).",
+            ephemeral: true
+        });
+    }
+
+    try {
+        const yeniToken = crypto.randomBytes(16).toString("hex");
+        db.prepare(`
+            INSERT INTO pixel_users (user_id, token, guild_id) VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET guild_id = excluded.guild_id
+        `).run(interaction.user.id, yeniToken, interaction.guildId);
+
+        const token = db.prepare("SELECT token FROM pixel_users WHERE user_id = ?").get(interaction.user.id).token;
+
+        return interaction.reply({
+            content:
+                `🎨 **Senin kişisel tuval linkin** (kimseyle paylaşma):\n${base}/piksel?t=${token}`,
+            ephemeral: true
+        });
+    } catch (e) {
+        console.error("Piksel link hatası:", e);
+        return interaction.reply({ content: "❌ Link oluşturulamadı.", ephemeral: true }).catch(() => {});
+    }
+});
+
+/* ---------- WEB SAYFASI ---------- */
+
+const PIKSEL_SAYFA = String.raw`<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Freaktsing • Piksel Tuvali</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#1a1b1e;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#fff;touch-action:none;user-select:none;-webkit-user-select:none}
+#c{position:absolute;left:0;top:0;width:100%;height:100%;display:block;cursor:crosshair}
+#info{position:absolute;top:8px;left:8px;background:rgba(20,21,24,.88);padding:6px 10px;border-radius:8px;font-size:13px;line-height:1.4}
+#msg{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:#c0392b;padding:6px 14px;border-radius:8px;font-size:14px;display:none}
+#bar{position:absolute;left:0;right:0;bottom:0;background:rgba(20,21,24,.96);padding:8px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;border-top:1px solid #333}
+#pal{display:flex;flex-wrap:wrap;gap:3px;max-width:560px;justify-content:center}
+.sw{width:22px;height:22px;border-radius:4px;border:2px solid #444;cursor:pointer;box-sizing:border-box}
+.sw.sel{border-color:#fff;transform:scale(1.15)}
+#pick{width:38px;height:30px;border:none;padding:0;background:none;cursor:pointer}
+#koy{background:#5865F2;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:15px;font-weight:600;cursor:pointer}
+#koy:disabled{background:#4a4d57;cursor:not-allowed}
+#cd{font-size:13px;min-width:90px;text-align:center}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">Yükleniyor...</div>
+<div id="msg"></div>
+<div id="bar">
+  <div id="pal"></div>
+  <input type="color" id="pick" value="#e50000" title="Herhangi bir renk seç">
+  <button id="koy" disabled>Pikseli Koy</button>
+  <div id="cd"></div>
+</div>
+<script>
+(function(){
+var SIZE=10000, MINZ=0.03, MAXZ=64;
+var TOKEN=new URLSearchParams(location.search).get("t")||"";
+var cv=document.getElementById("c"), ctx=cv.getContext("2d");
+var infoEl=document.getElementById("info"), msgEl=document.getElementById("msg");
+var koyBtn=document.getElementById("koy"), cdEl=document.getElementById("cd");
+var W=0,H=0, zoom=0.08, camX=SIZE/2, camY=SIZE/2;
+var pixels=[], pstep=1, sel=null, color="#e50000";
+var nextAt=0, giris=false, yonetici=false, ad="", reqId=0;
+
+/* ---- renk paleti ---- */
+var COLORS=["#ffffff","#e4e4e4","#888888","#222222","#000000","#ffa7d1","#ff3881","#de107f","#e50000","#be0039","#6d001a","#ff4500","#e59500","#ffa800","#ffd635","#e5d900","#fff8b8","#94e044","#7eed56","#02be01","#00cc78","#00a368","#00756f","#00ccc0","#00d3dd","#51e9f4","#3690ea","#0083c7","#2450a4","#0000ea","#493ac1","#6a5cff","#94b3ff","#cf6ee4","#b44ac0","#820080","#811e9f","#a06a42","#9c6926","#6d482f","#ffb470"];
+var palEl=document.getElementById("pal");
+COLORS.forEach(function(c){
+  var d=document.createElement("div");
+  d.className="sw"+(c===color?" sel":"");
+  d.style.background=c;
+  d.onclick=function(){setColor(c);};
+  palEl.appendChild(d);
+});
+var pick=document.getElementById("pick");
+pick.oninput=function(){setColor(pick.value);};
+function setColor(c){
+  color=c.toLowerCase();
+  pick.value=color;
+  var sws=palEl.children;
+  for(var i=0;i<sws.length;i++){ sws[i].className="sw"+(COLORS[i]===color?" sel":""); }
+  draw();
+}
+
+/* ---- yardımcılar ---- */
+function msg(t){ msgEl.textContent=t; msgEl.style.display="block"; clearTimeout(msg.t); msg.t=setTimeout(function(){msgEl.style.display="none";},2500); }
+function clampCam(){ camX=Math.max(0,Math.min(SIZE,camX)); camY=Math.max(0,Math.min(SIZE,camY)); }
+function zoomAt(sx,sy,f){
+  var cx=(sx-W/2)/zoom+camX, cy=(sy-H/2)/zoom+camY;
+  zoom=Math.max(MINZ,Math.min(MAXZ,zoom*f));
+  camX=cx-(sx-W/2)/zoom; camY=cy-(sy-H/2)/zoom;
+  clampCam(); draw(); schedule();
+}
+
+/* ---- çizim ---- */
+function draw(){
+  ctx.fillStyle="#2b2d31"; ctx.fillRect(0,0,W,H);
+  var x0=(0-camX)*zoom+W/2, y0=(0-camY)*zoom+H/2, sz=SIZE*zoom;
+  ctx.fillStyle="#ffffff"; ctx.fillRect(x0,y0,sz,sz);
+
+  var s=Math.max(1,pstep*zoom), si=Math.ceil(s);
+  for(var i=0;i<pixels.length;i++){
+    var p=pixels[i];
+    ctx.fillStyle=p[2];
+    ctx.fillRect(Math.floor((p[0]-camX)*zoom+W/2), Math.floor((p[1]-camY)*zoom+H/2), si, si);
+  }
+
+  if(zoom>=10){
+    ctx.strokeStyle="rgba(0,0,0,0.12)"; ctx.lineWidth=1; ctx.beginPath();
+    var gx0=Math.max(0,Math.floor(camX-W/2/zoom)), gx1=Math.min(SIZE,Math.ceil(camX+W/2/zoom));
+    var gy0=Math.max(0,Math.floor(camY-H/2/zoom)), gy1=Math.min(SIZE,Math.ceil(camY+H/2/zoom));
+    for(var gx=gx0;gx<=gx1;gx++){ var sx=Math.floor((gx-camX)*zoom+W/2)+0.5; ctx.moveTo(sx,0); ctx.lineTo(sx,H); }
+    for(var gy=gy0;gy<=gy1;gy++){ var sy=Math.floor((gy-camY)*zoom+H/2)+0.5; ctx.moveTo(0,sy); ctx.lineTo(W,sy); }
+    ctx.stroke();
+  }
+
+  if(sel){
+    var ax=(sel.x-camX)*zoom+W/2, ay=(sel.y-camY)*zoom+H/2, as=Math.max(zoom,4);
+    ctx.globalAlpha=0.85; ctx.fillStyle=color; ctx.fillRect(ax,ay,as,as); ctx.globalAlpha=1;
+    ctx.strokeStyle="#000"; ctx.lineWidth=2; ctx.strokeRect(ax-1,ay-1,as+2,as+2);
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.strokeRect(ax,ay,as,as);
+  }
+  updateInfo();
+}
+
+function updateInfo(){
+  var t=giris?(ad+(yonetici?" 👑 Yönetici":"")):"👀 Sadece izleme (Discord'da !piksel yaz)";
+  t+="<br>Yakınlık: "+zoom.toFixed(2)+"x";
+  if(sel) t+=" | Seçili: "+sel.x+", "+sel.y;
+  infoEl.innerHTML=t;
+}
+
+/* ---- veri çekme ---- */
+var tmr=null;
+function schedule(){ clearTimeout(tmr); tmr=setTimeout(load,200); }
+function load(){
+  var st=Math.max(1,Math.floor(1/zoom));
+  var x=Math.max(0,Math.floor(camX-W/2/zoom)), y=Math.max(0,Math.floor(camY-H/2/zoom));
+  var w=Math.min(SIZE-x,Math.ceil(W/zoom)+2), h=Math.min(SIZE-y,Math.ceil(H/zoom)+2);
+  if(w<=0||h<=0) return;
+  var my=++reqId;
+  fetch("/api/piksel/view?x="+x+"&y="+y+"&w="+w+"&h="+h+"&step="+st)
+    .then(function(r){return r.json();})
+    .then(function(d){ if(my!==reqId) return; pixels=d.p||[]; pstep=d.step||1; draw(); })
+    .catch(function(){});
+}
+setInterval(function(){ if(!document.hidden) load(); },5000);
+
+/* ---- giriş bilgisi ---- */
+if(TOKEN){
+  fetch("/api/piksel/ben?t="+encodeURIComponent(TOKEN))
+    .then(function(r){return r.json();})
+    .then(function(d){ if(d.ok){ giris=true; ad=d.ad; yonetici=d.yonetici; } draw(); })
+    .catch(function(){});
+}
+
+/* ---- piksel koyma ---- */
+function place(){
+  if(!giris){ msg("Sadece izleme modundasın. Discord'da !piksel yaz."); return; }
+  if(!sel){ msg("Önce bir yere dokun/tıkla."); return; }
+  if(Date.now()<nextAt) return;
+  var px=sel.x, py=sel.y, pc=color;
+  nextAt=Date.now()+(yonetici?0:2000);
+  fetch("/api/piksel/koy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({t:TOKEN,x:px,y:py,color:pc})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){ pixels.push([px,py,pc]); nextAt=Date.now()+(d.bekle||0); draw(); }
+      else { msg(d.hata||"Hata"); if(d.bekle) nextAt=Date.now()+d.bekle; }
+    })
+    .catch(function(){ msg("Bağlantı hatası"); nextAt=0; });
+}
+koyBtn.onclick=place;
+document.addEventListener("keydown",function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); place(); } });
+
+setInterval(function(){
+  var kalan=nextAt-Date.now();
+  if(!giris){ cdEl.textContent=""; koyBtn.disabled=true; return; }
+  if(kalan>0){ cdEl.textContent="⏳ "+(kalan/1000).toFixed(1)+" sn"; koyBtn.disabled=true; }
+  else { cdEl.textContent="✅ Hazır"; koyBtn.disabled=!sel; }
+},100);
+
+/* ---- dokunma / fare ---- */
+var ptrs={}, moved=false, startX=0, startY=0, lastDist=0, lastMid=null;
+function ids(){ return Object.keys(ptrs); }
+function pinchInfo(){
+  var k=ids(), a=ptrs[k[0]], b=ptrs[k[1]];
+  return { d:Math.hypot(a.x-b.x,a.y-b.y), mx:(a.x+b.x)/2, my:(a.y+b.y)/2 };
+}
+cv.addEventListener("pointerdown",function(e){
+  cv.setPointerCapture(e.pointerId);
+  ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+  if(ids().length===1){ moved=false; startX=e.clientX; startY=e.clientY; }
+  else if(ids().length===2){ moved=true; var pi=pinchInfo(); lastDist=pi.d; lastMid={x:pi.mx,y:pi.my}; }
+});
+cv.addEventListener("pointermove",function(e){
+  var p=ptrs[e.pointerId]; if(!p) return;
+  var n=ids().length;
+  if(n===1){
+    if(Math.abs(e.clientX-startX)+Math.abs(e.clientY-startY)>6) moved=true;
+    if(moved){ camX-=(e.clientX-p.x)/zoom; camY-=(e.clientY-p.y)/zoom; clampCam(); draw(); schedule(); }
+    p.x=e.clientX; p.y=e.clientY;
+  } else if(n===2){
+    p.x=e.clientX; p.y=e.clientY;
+    var pi=pinchInfo();
+    if(lastMid){ camX-=(pi.mx-lastMid.x)/zoom; camY-=(pi.my-lastMid.y)/zoom; clampCam(); }
+    if(lastDist>0) zoomAt(pi.mx,pi.my,pi.d/lastDist);
+    lastDist=pi.d; lastMid={x:pi.mx,y:pi.my};
+  }
+});
+function up(e){
+  var n=ids().length;
+  if(n===1 && !moved && ptrs[e.pointerId] && e.type==="pointerup"){
+    var cx=Math.floor((e.clientX-W/2)/zoom+camX), cy=Math.floor((e.clientY-H/2)/zoom+camY);
+    if(cx>=0&&cy>=0&&cx<SIZE&&cy<SIZE){ sel={x:cx,y:cy}; draw(); }
+  }
+  delete ptrs[e.pointerId];
+  if(ids().length===1) moved=true;
+}
+cv.addEventListener("pointerup",up);
+cv.addEventListener("pointercancel",up);
+cv.addEventListener("wheel",function(e){ e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.25:0.8); },{passive:false});
+
+function resize(){
+  W=cv.width=window.innerWidth; H=cv.height=window.innerHeight;
+  draw(); schedule();
+}
+window.addEventListener("resize",resize);
+W=window.innerWidth; H=window.innerHeight;
+zoom=Math.max(MINZ,Math.min(W,H)/SIZE*0.95);
+resize();
+})();
+</script>
+</body>
+</html>`;
+
 
 /* ================= YOUTUBE ================= */
 
